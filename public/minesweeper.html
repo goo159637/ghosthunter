@@ -106,13 +106,16 @@
         <button id="btn-create" class="primary" type="button">방 만들기</button>
       </article>
       <article class="card">
-        <h2>코드로 참가</h2>
-        <p class="muted">친구가 알려준 4글자 코드를 입력하세요.</p>
+        <h2>코드로 참가 · 관전</h2>
+        <p class="muted">친구가 알려준 4글자 코드를 입력하세요. 자리가 찼거나 구경만 하고 싶으면 관전으로.</p>
         <label class="field">
           <span>방 코드</span>
           <input id="join-code" class="code-input" type="text" maxlength="4" placeholder="ABCD" autocapitalize="characters" autocomplete="off" spellcheck="false">
         </label>
-        <button id="btn-join" class="primary" type="button">참가하기</button>
+        <div class="row">
+          <button id="btn-join" class="primary" type="button">참가하기</button>
+          <button id="btn-watch" class="secondary" type="button">👀 관전하기</button>
+        </div>
       </article>
     </div>
   </section>
@@ -140,24 +143,39 @@
       <div id="vs-count" class="countdown" hidden></div>
     </div>
 
+    <p id="vs-people" class="muted people" hidden></p>
+
     <div id="vs-lobby" class="panel" hidden>
       <p class="lead">상대를 기다리는 중…</p>
       <div id="lobby-code" class="big-code"></div>
       <div class="row center">
         <button id="btn-copy-code" class="secondary" type="button">코드 복사</button>
         <button id="btn-copy-link" class="secondary" type="button">초대 링크 복사</button>
+        <button class="secondary stand-btn" type="button">👀 관전으로 빠지기</button>
       </div>
     </div>
+
+    <!-- 관전자용: 앉기 · 교대 요청 -->
+    <div id="vs-spec" class="panel spec-bar" hidden>
+      <span class="lead">👀 관전 중</span>
+      <div id="vs-spec-actions" class="row"></div>
+      <p id="vs-spec-note" class="muted"></p>
+    </div>
+
+    <!-- 플레이어용: 들어온 교대 요청 -->
+    <div id="vs-swaps" class="panel swap-box" hidden></div>
 
     <div id="vs-arena" class="vs-arena" hidden>
       <section class="vs-side me">
         <div class="vs-head">
           <strong id="vs-my-name">나</strong>
+          <b id="vs-my-pts" class="pts">0점</b>
           <span id="vs-my-stats" class="vs-stats"></span>
         </div>
         <div class="progress"><i id="vs-my-progress"></i></div>
         <div class="board-wrap"><div id="vs-my-board" class="ms-board" aria-label="내 판"></div></div>
-        <div class="ms-tools">
+        <p id="vs-my-note" class="muted side-note"></p>
+        <div id="vs-tools" class="ms-tools">
           <button class="secondary toggle flag-toggle" type="button" aria-pressed="false">🚩 깃발 모드</button>
           <label class="check">
             <input type="checkbox" class="question-opt">
@@ -169,6 +187,7 @@
       <section class="vs-side opp">
         <div class="vs-head">
           <strong id="vs-opp-name">상대</strong>
+          <b id="vs-opp-pts" class="pts">0점</b>
           <span id="vs-opp-stats" class="vs-stats"></span>
         </div>
         <div class="progress"><i id="vs-opp-progress"></i></div>
@@ -180,9 +199,10 @@
     <div id="vs-result" class="panel ms-result" hidden>
       <div id="vs-result-badge" class="result"></div>
       <p id="vs-result-detail" class="lead"></p>
-      <p id="vs-result-sub" class="muted"></p>
-      <div class="row center">
+      <table id="vs-breakdown" class="breakdown" aria-label="점수 내역"></table>
+      <div id="vs-result-actions" class="row center">
         <button id="btn-rematch" class="primary" type="button">재대결</button>
+        <button class="secondary stand-btn" type="button">👀 관전으로 빠지기</button>
         <button id="btn-vs-home" class="secondary" type="button">나가기</button>
       </div>
       <p id="rematch-state" class="muted"></p>
@@ -206,7 +226,8 @@
       <li><b>PC</b> — 왼쪽 클릭 열기 · 오른쪽 클릭 깃발 · 열린 숫자를 클릭하면 주변 깃발 수가 맞을 때 나머지를 한꺼번에 엽니다.</li>
       <li><b>모바일</b> — 탭 열기 · 길게 눌러 깃발 · <b>깃발 모드</b>를 켜면 탭이 깃발이 됩니다.</li>
       <li><b>키보드</b> — 방향키 이동 · Enter/Space 열기 · F 깃발 · N 새 게임</li>
-      <li><b>1:1 대전</b> — 같은 크기의 <b>서로 다른 판</b>을 동시에 풉니다. 출발 지점은 미리 열려 있고, 먼저 다 여는 쪽이 승리. <b>지뢰를 밟으면 그 자리에서 패배</b>합니다. 상대 판이 실시간으로 보입니다.</li>
+      <li><b>1:1 대전</b> — 같은 크기의 <b>서로 다른 판</b>을 동시에 풀고 <b>점수</b>로 승부합니다. 점수 = 연 칸 × 10 − 걸린 초 + (다 열면 칸 수 × 5) − (지뢰를 밟으면 칸 수 × 2). 지뢰를 밟으면 내 판만 끝나고 상대가 끝낼 때까지 기다립니다. 누가 다 열면 그 순간 끝.</li>
+      <li><b>관전</b> — 코드로 관전 입장. 빈 자리가 있으면 앉을 수 있고, 플레이어에게 <b>교대</b>를 요청해 수락받으면 자리를 바꿉니다(판이 끝난 뒤). 플레이어도 관전으로 빠질 수 있습니다.</li>
       <li>큰 판은 화면에 맞춰 칸이 작아집니다. ⛶ 버튼으로 전체 화면에 꽉 채울 수 있어요.</li>
       <li>쉬움 / 보통 / 어려움의 최고 기록(혼자)은 이 브라우저에 저장됩니다.</li>
     </ul>

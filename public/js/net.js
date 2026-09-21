@@ -26,10 +26,11 @@ export function loadToken(code, game = 'baseball') {
 
 /**
  * @param {{
- *   type:'create'|'join', name:string, code?:string,
+ *   type:'create'|'join'|'watch', name:string, code?:string,
  *   game?:'baseball'|'minesweeper', options?:object,
  *   digits?:number, turnSeconds?:number
  * }} intent  options 는 방 만들 때 서버로 그대로 보낸다. (digits/turnSeconds 는 숫자야구의 옛 형식)
+ *            'watch' 는 관전으로 들어간다 (지뢰찾기만).
  */
 export function createOnlineEngine(intent) {
   const listeners = new Set();
@@ -39,10 +40,11 @@ export function createOnlineEngine(intent) {
   let ws = null;
   let attempt = 0;
   let closedByUser = false;
-  let code = intent.type === 'join' ? String(intent.code || '').toUpperCase().trim() : null;
+  let code = intent.type !== 'create' ? String(intent.code || '').toUpperCase().trim() : null;
   let token = code ? loadToken(code, game) : null;
   let seat = null;
-  let last = { view: null, chat: [], grace: null, ack: 0, code, status: 'connecting' };
+  let role = intent.type === 'watch' ? 'spectator' : 'player';
+  let last = { view: null, chat: [], grace: null, ack: 0, code, role, you: null, people: null, swaps: [], mySwap: null, freeSeat: null, status: 'connecting' };
 
   const emit = (patch) => {
     last = { ...last, ...patch };
@@ -58,8 +60,9 @@ export function createOnlineEngine(intent) {
   };
 
   const handshake = () => {
-    if (code && token) send({ t: 'rejoin', game, code, token });
+    if (code && token) send({ t: 'rejoin', game, code, token });   // 역할(자리/관전)은 서버가 토큰으로 안다
     else if (intent.type === 'create') send({ t: 'create', game, name: intent.name, ...options });
+    else if (intent.type === 'watch') send({ t: 'watch', game, code, name: intent.name });
     else send({ t: 'join', game, code, name: intent.name });
   };
 
@@ -83,12 +86,27 @@ export function createOnlineEngine(intent) {
       }
       if (msg.t === 'joined') {
         code = msg.code;
-        seat = msg.you;
+        seat = msg.you ?? null;
+        role = msg.role ?? 'player';
         token = msg.token;
         storeToken(code, token, game);
-        emit({ code, status: 'online' });
+        emit({ code, role, you: seat, status: 'online' });
       } else if (msg.t === 'state') {
-        emit({ view: msg.view, chat: msg.chat, grace: msg.grace, ack: msg.ack ?? 0, code: msg.code, status: 'online' });
+        emit({
+          view: msg.view,
+          chat: msg.chat,
+          grace: msg.grace ?? null,
+          ack: msg.ack ?? 0,
+          code: msg.code,
+          role: msg.role ?? 'player',
+          you: msg.you ?? null,
+          pid: msg.pid ?? null,
+          people: msg.people ?? null,
+          swaps: msg.swaps ?? [],
+          mySwap: msg.mySwap ?? null,
+          freeSeat: msg.freeSeat ?? null,
+          status: 'online',
+        });
       } else if (msg.t === 'error') {
         // 방이 사라졌는데 낡은 토큰으로 붙으려 한 경우엔 토큰을 버리고 처음부터
         if (msg.code === 'bad_token') token = null;
@@ -121,6 +139,9 @@ export function createOnlineEngine(intent) {
     get seat() {
       return seat;
     },
+    get role() {
+      return role;
+    },
 
     subscribe(fn) {
       listeners.add(fn);
@@ -151,6 +172,22 @@ export function createOnlineEngine(intent) {
     /** 게임별 조작 메시지를 그대로 보낸다. 지뢰찾기의 {t:'ms', …} 가 이걸 쓴다. */
     action(msg) {
       return send(msg);
+    },
+    /* 관전 ↔ 자리 */
+    sit() {
+      send({ t: 'sit' });
+    },
+    stand() {
+      send({ t: 'stand' });
+    },
+    swap(seatIndex) {
+      send({ t: 'swap', seat: seatIndex });
+    },
+    swapAccept(pid) {
+      send({ t: 'swap_accept', pid });
+    },
+    swapDecline(pid) {
+      send({ t: 'swap_decline', pid });
     },
     leave() {
       closedByUser = true;

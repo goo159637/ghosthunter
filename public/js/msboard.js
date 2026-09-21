@@ -255,6 +255,19 @@ export function createBoard(root, handlers = {}) {
       game = next;
       render();
     },
+    /** 판을 비운다 (자리가 비었을 때). */
+    clear() {
+      game = null;
+      cells = [];
+      painted = [];
+      rows = 0;
+      cols = 0;
+      root.replaceChildren();
+    },
+    /** 잠시 보기 전용으로 (관전자가 왼쪽 판을 볼 때). */
+    setReadonly(flag) {
+      root.classList.toggle('readonly', !interactive || flag);
+    },
     render,
     fit,
     get game() {

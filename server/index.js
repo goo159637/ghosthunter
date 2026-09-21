@@ -52,6 +52,14 @@ const ERROR_TEXT = {
   rate_limited: '요청이 너무 빨라요.',
   wrong_game: '이 코드는 다른 게임의 방이에요.',
   already_over: '이미 끝난 게임이에요.',
+  no_spectate: '이 게임은 관전할 수 없어요.',
+  spectators_full: '관전석이 가득 찼어요.',
+  not_player: '자리에 앉은 사람만 할 수 있어요.',
+  not_spectator: '관전 중일 때만 할 수 있어요.',
+  in_progress: '판이 끝난 뒤에 할 수 있어요.',
+  seat_empty: '그 자리는 비어 있어요 — 바로 앉을 수 있어요.',
+  no_request: '그런 교대 요청이 없어요.',
+  board_over: '내 판은 이미 끝났어요.',
 };
 
 /** 만들기/참가 요청이 어느 게임인지. 안 적으면 숫자야구. */
@@ -131,29 +139,59 @@ function allowed(ws) {
   return ++ws.windowCount <= 100;
 }
 
-function leaveRoom(ws) {
+/** 방에서 나간다. explicit 이면(직접 나가기) 관전석은 바로 지우고, 끊긴 거면 유예를 둔다. */
+function leaveRoom(ws, { explicit = false } = {}) {
   const room = ws.room;
   if (!room) return;
   const seat = ws.seat;
+  const specToken = ws.specToken;
   ws.room = null;
   ws.seat = null;
-  if (room.detach(seat, ws)) room.broadcast();
+  ws.specToken = null;
+  let changed = false;
+  if (seat !== null) changed = room.detach(seat, ws);
+  if (specToken) changed = room.detachSpectator(specToken, ws, { remove: explicit });
+  if (changed) room.broadcast();
 }
 
 function enter(ws, room, index, token) {
   leaveRoom(ws);
   ws.room = room;
   ws.seat = index;
+  ws.specToken = null;
   room.attach(index, ws);
-  send(ws, { t: 'joined', code: room.code, game: room.kind, you: index, token });
+  send(ws, { t: 'joined', code: room.code, game: room.kind, role: 'player', you: index, token });
   room.broadcast();
 }
 
-/** 방에 들어와 있고, (게임을 밝혔다면) 그 게임의 방일 때만 통과. */
-function roomFor(ws, kind = null) {
+function enterAsSpectator(ws, room, token) {
+  leaveRoom(ws);
+  ws.room = room;
+  ws.seat = null;
+  ws.specToken = token;
+  room.attachSpectator(token, ws);
+  send(ws, { t: 'joined', code: room.code, game: room.kind, role: 'spectator', you: null, token });
+  room.broadcast();
+}
+
+/** 방에 들어와 있고, (게임을 밝혔다면) 그 게임의 방일 때만 통과. role 을 주면 그 역할일 때만. */
+function roomFor(ws, kind = null, role = null) {
   if (!ws.room) return sendError(ws, 'no_room'), null;
   if (kind && ws.room.kind !== kind) return sendError(ws, 'wrong_game'), null;
+  if (role === 'player' && ws.seat === null) return sendError(ws, 'not_player'), null;
+  if (role === 'spectator' && !ws.specToken) return sendError(ws, 'not_spectator'), null;
   return ws.room;
+}
+
+/** 규칙이 돌려준 결과가 실패면 에러를 보내고 false, 아니면 상태를 뿌리고 true. */
+function apply(ws, room, out) {
+  if (out && out.ok === false) {
+    sendError(ws, out.error);
+    return false;
+  }
+  room.touch();
+  room.broadcast();
+  return true;
 }
 
 const handlers = {
@@ -175,33 +213,107 @@ const handlers = {
     enter(ws, room, seat.index, seat.token);
   },
 
+  /** 재접속 — 토큰이 자리 것이든 관전석 것이든 원래 역할로 돌아간다. */
   rejoin(ws, msg) {
     const room = store.get(msg.code);
     if (!room) return sendError(ws, 'room_not_found');
     if (msg.game && room.kind !== kindOf(msg)) return sendError(ws, 'wrong_game');
-    const index = room.seatForToken(String(msg.token ?? ''));
-    if (index === null) return sendError(ws, 'bad_token');
-    enter(ws, room, index, room.tokens[index]);
+    const token = String(msg.token ?? '');
+    const index = room.seatForToken(token);
+    if (index !== null) return enter(ws, room, index, token);
+    if (room.spectator(token)) return enterAsSpectator(ws, room, token);
+    sendError(ws, 'bad_token');
+  },
+
+  /* ── 관전 ── */
+
+  watch(ws, msg) {
+    const room = store.get(msg.code);
+    if (!room) return sendError(ws, 'room_not_found');
+    if (msg.game && room.kind !== kindOf(msg)) return sendError(ws, 'wrong_game');
+    if (!room.canSpectate) return sendError(ws, 'no_spectate');
+    const token = room.watch(msg.name);
+    if (!token) return sendError(ws, 'spectators_full');
+    enterAsSpectator(ws, room, token);
+  },
+
+  /** 관전자가 빈 자리에 앉는다. */
+  sit(ws) {
+    const room = roomFor(ws, null, 'spectator');
+    if (!room) return;
+    const out = room.sit(ws.specToken);
+    if (!out.ok) return sendError(ws, out.error);
+    const token = ws.specToken;
+    ws.specToken = null;
+    ws.seat = out.index;
+    send(ws, { t: 'joined', code: room.code, game: room.kind, role: 'player', you: out.index, token });
+    room.touch();
+    room.broadcast();
+  },
+
+  /** 자리에 앉은 사람이 관전으로 빠진다. 진행 중이면 먼저 기권해야 한다. */
+  stand(ws) {
+    const room = roomFor(ws, null, 'player');
+    if (!room) return;
+    const out = room.stand(ws.seat);
+    if (!out.ok) return sendError(ws, out.error);
+    ws.seat = null;
+    ws.specToken = out.token;
+    send(ws, { t: 'joined', code: room.code, game: room.kind, role: 'spectator', you: null, token: out.token });
+    room.touch();
+    room.broadcast();
+  },
+
+  /** 관전자 → "그 자리 사람과 바꾸고 싶다". seat 이 null 이면 취소. */
+  swap(ws, msg) {
+    const room = roomFor(ws, null, 'spectator');
+    if (!room) return;
+    const seat = msg.seat === null || msg.seat === undefined ? null : Number(msg.seat);
+    apply(ws, room, room.requestSwap(ws.specToken, seat));
+  },
+
+  /** 자리 사람 → 교대 수락. 바뀐 두 사람 모두에게 새 역할을 알린다. */
+  swap_accept(ws, msg) {
+    const room = roomFor(ws, null, 'player');
+    if (!room) return;
+    const mySeat = ws.seat;
+    const myToken = room.tokens[mySeat];
+    const out = room.acceptSwap(mySeat, String(msg.pid ?? ''));
+    if (!out.ok) return sendError(ws, out.error);
+    // 나는 관전자로
+    ws.seat = null;
+    ws.specToken = myToken;
+    send(ws, { t: 'joined', code: room.code, game: room.kind, role: 'spectator', you: null, token: myToken });
+    // 상대(관전자였던 사람)는 자리로 — 그 소켓을 찾아 역할을 바꾼다
+    const newToken = room.tokens[mySeat];
+    const other = room.sockets[mySeat];
+    if (other) {
+      other.seat = mySeat;
+      other.specToken = null;
+      send(other, { t: 'joined', code: room.code, game: room.kind, role: 'player', you: mySeat, token: newToken });
+    }
+    room.touch();
+    room.broadcast();
+  },
+
+  swap_decline(ws, msg) {
+    const room = roomFor(ws, null, 'player');
+    if (!room) return;
+    apply(ws, room, room.declineSwap(ws.seat, String(msg.pid ?? '')));
   },
 
   /* ── 숫자야구 ── */
 
   secret(ws, msg) {
-    const room = roomFor(ws, 'baseball');
+    const room = roomFor(ws, 'baseball', 'player');
     if (!room) return;
-    const out = room.rules.submitSecret(room.game, ws.seat, String(msg.value ?? ''));
-    if (!out.ok) return sendError(ws, out.error);
-    room.touch();
-    room.broadcast();
+    apply(ws, room, room.rules.submitSecret(room.game, ws.seat, String(msg.value ?? '')));
   },
 
   guess(ws, msg) {
-    const room = roomFor(ws, 'baseball');
+    const room = roomFor(ws, 'baseball', 'player');
     if (!room) return;
-    const out = room.rules.makeGuess(room.game, ws.seat, String(msg.value ?? ''));
-    if (!out.ok) return sendError(ws, out.error);
-    room.touch();
-    room.broadcast();
+    apply(ws, room, room.rules.makeGuess(room.game, ws.seat, String(msg.value ?? '')));
   },
 
   /* ── 지뢰찾기 1:1 ── */
@@ -212,7 +324,7 @@ const handlers = {
    * 확정 상태를 내려보내 화면을 맞추기만 한다.
    */
   ms(ws, msg) {
-    const room = roomFor(ws, 'minesweeper');
+    const room = roomFor(ws, 'minesweeper', 'player');
     if (!room) return;
     const n = Number(msg.n);
     if (Number.isFinite(n)) room.acks[ws.seat] = n;
@@ -224,28 +336,29 @@ const handlers = {
   /* ── 공통 ── */
 
   chat(ws, msg) {
-    if (!ws.room) return sendError(ws, 'no_room');
-    if (ws.room.addChat(ws.seat, msg.text)) ws.room.broadcast();
+    const room = roomFor(ws);
+    if (!room) return;
+    const who = ws.seat !== null
+      ? { player: ws.seat, pid: room.pids[ws.seat], name: room.names[ws.seat] }
+      : { player: null, pid: room.spectator(ws.specToken)?.pid, name: room.spectator(ws.specToken)?.name ?? '관전자' };
+    if (room.addChat(who, msg.text)) room.broadcast();
   },
 
   rematch(ws) {
-    const room = roomFor(ws);
+    const room = roomFor(ws, null, 'player');
     if (!room) return;
-    const out = room.rules.requestRematch(room.game, ws.seat);
-    if (!out.ok) return sendError(ws, out.error);
-    room.touch();
-    room.broadcast();
+    apply(ws, room, room.rules.requestRematch(room.game, ws.seat));
   },
 
   surrender(ws) {
-    const room = roomFor(ws);
+    const room = roomFor(ws, null, 'player');
     if (!room) return;
     room.rules.forfeit(room.game, ws.seat, 'forfeit');
     room.broadcast();
   },
 
   leave(ws) {
-    leaveRoom(ws);
+    leaveRoom(ws, { explicit: true });
   },
 
   ping(ws) {
@@ -257,6 +370,7 @@ wss.on('connection', (ws) => {
   ws.isAlive = true;
   ws.room = null;
   ws.seat = null;
+  ws.specToken = null;
   ws.windowStart = Date.now();
   ws.windowCount = 0;
 

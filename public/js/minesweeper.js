@@ -4,6 +4,7 @@
  * 판을 그리고 입력을 받는 건 /js/msboard.js 가 하고, 여기서는 둘을 잇기만 한다.
  */
 import * as M from '/shared/minesweeper.js';
+import { scoreOfGame } from '/shared/msversus.js';
 import { createBoard } from '/js/msboard.js';
 import { createOnlineEngine, loadToken } from '/js/net.js';
 
@@ -306,6 +307,11 @@ function finishSolo() {
 
 /* ═══════════════════ 1:1 대전 ═══════════════════ */
 
+/*
+ * 화면은 "왼쪽 판 / 오른쪽 판" 으로 그린다.
+ * 플레이어면 왼쪽이 내 자리(view.you), 관전자면 왼쪽이 0번 자리.
+ * 서버가 보내는 view.seats[0|1] 을 left/right 로 바꿔 읽는다.
+ */
 let engine = null;
 let unsubscribe = null;
 let vs = null;          // 서버가 보낸 마지막 payload
@@ -315,15 +321,20 @@ let actionNo = 0;       // 내가 보낸 조작 번호. 서버 ack 가 여기에
 let skew = 0;           // 서버 시계 - 내 시계
 let vsTimer = null;
 let lastPhase = null;
+let lastRole = null;
 
 const serverNow = () => Date.now() + skew;
+const isPlayer = () => vs?.role === 'player' && vs?.you !== null;
+const leftIndex = () => (isPlayer() ? vs.you : 0);
+const seatL = (view = vs?.view) => view?.seats[leftIndex()];
+const seatR = (view = vs?.view) => view?.seats[1 - leftIndex()];
 
-const myBoard = createBoard($('vs-my-board'), {
+const leftBoard = createBoard($('vs-my-board'), {
   onPrimary: (i) => vsPrimary(i),
   onSecondary: (i) => vsSecondary(i),
   onChord: (i) => replica && replica.open[i] && vsAct('chord', i),
 });
-const oppBoard = createBoard($('vs-opp-board'));
+const rightBoard = createBoard($('vs-opp-board'));
 
 function startVersus(intent) {
   stopVersus();
@@ -332,7 +343,7 @@ function startVersus(intent) {
   engine = createOnlineEngine({ ...intent, game: GAME });
   engine.onError((err) => {
     toast(err.message || '문제가 생겼어요.');
-    const fatal = ['room_not_found', 'bad_token', 'room_full', 'wrong_game', 'server_full'].includes(err.code);
+    const fatal = ['room_not_found', 'bad_token', 'room_full', 'wrong_game', 'server_full', 'no_spectate', 'spectators_full'].includes(err.code);
     if (fatal && !vs?.view) {
       stopVersus();
       showScreen('vs-home');
@@ -340,6 +351,13 @@ function startVersus(intent) {
   });
   unsubscribe = engine.subscribe((payload) => {
     vs = payload;
+    if (payload.role !== lastRole) {
+      // 역할이 바뀌면(교대·앉기·빠지기) 내 판 복제본은 버리고 서버 상태로 다시 그린다
+      lastRole = payload.role;
+      replica = null;
+      actionNo = 0;
+      leftBoard.setReadonly(payload.role !== 'player');
+    }
     if (payload.view) {
       skew = payload.view.now - Date.now();
       syncBoards(payload);
@@ -361,6 +379,9 @@ function stopVersus({ keepUrl = false } = {}) {
   vs = null;
   replica = null;
   lastPhase = null;
+  lastRole = null;
+  leftBoard.clear();
+  rightBoard.clear();
   if (!keepUrl && location.search) history.replaceState(null, '', location.pathname);
 }
 
@@ -368,20 +389,30 @@ function stopVersus({ keepUrl = false } = {}) {
 function syncBoards(payload) {
   const view = payload.view;
   const dims = { rows: view.rows, cols: view.cols, mines: view.mines };
-  if (view.me.board) {
-    const caughtUp = payload.ack >= actionNo;
-    if (caughtUp || !replica || replicaGameNo !== view.gameNo) {
-      replica = M.fromSnapshot({ ...dims, ...view.me, phase: view.me.boardPhase });
-      replicaGameNo = view.gameNo;
-      myBoard.setGame(replica);
-      if (!caughtUp) actionNo = payload.ack;   // 새 판이면 번호도 서버에 맞춘다
+  const L = seatL(view);
+  const R = seatR(view);
+
+  if (L?.board) {
+    if (isPlayer()) {
+      const caughtUp = payload.ack >= actionNo;
+      if (caughtUp || !replica || replicaGameNo !== view.gameNo) {
+        replica = M.fromSnapshot({ ...dims, ...L, phase: L.boardPhase });
+        replicaGameNo = view.gameNo;
+        leftBoard.setGame(replica);
+        if (!caughtUp) actionNo = payload.ack;   // 새 판이면 번호도 서버에 맞춘다
+      }
+    } else {
+      replica = null;
+      leftBoard.setGame(M.fromSnapshot({ ...dims, ...L, phase: L.boardPhase }));
     }
   } else {
     replica = null;
+    leftBoard.clear();
   }
-  if (view.opponent.board) {
-    oppBoard.setGame(M.fromSnapshot({ ...dims, ...view.opponent, phase: view.opponent.boardPhase }));
-  }
+
+  if (R?.board) rightBoard.setGame(M.fromSnapshot({ ...dims, ...R, phase: R.boardPhase }));
+  else rightBoard.clear();
+
   if (view.phase !== lastPhase) {
     lastPhase = view.phase;
     fitVersus();
@@ -391,7 +422,7 @@ function syncBoards(payload) {
 
 function canAct() {
   const view = vs?.view;
-  if (!view || !replica || M.isOver(replica)) return false;
+  if (!isPlayer() || !view || !replica || M.isOver(replica)) return false;
   if (view.phase === 'playing') return true;
   return view.phase === 'countdown' && serverNow() >= view.startAt;   // 출발 직후 서버 확정이 오기 전에도 둘 수 있게
 }
@@ -405,9 +436,12 @@ function vsAct(a, i) {
   actionNo++;
   engine.action({ t: 'ms', a, i, n: actionNo, q: settings.question });
   if (a === 'mark') vibrate(15);
-  myBoard.render();
+  leftBoard.render();
   renderVersusLive();
-  if (M.isOver(replica)) renderVersus();   // 서버 확정 전에 결과를 미리 보여 주진 않지만 판은 굳힌다
+  if (replica.phase === M.Phase.LOST) {
+    vibrate(120);
+    $('vs-my-note').textContent = '💥 지뢰! 내 판은 여기까지 — 상대가 끝낼 때까지 점수는 그대로예요';
+  }
 }
 
 function vsPrimary(i) {
@@ -425,19 +459,22 @@ function vsSecondary(i) {
 
 /** 두 판을 나란히(넓은 화면) 또는 위아래로(좁은 화면) 화면에 맞춘다. */
 function fitVersus() {
-  if ($('vs-play').hidden || !myBoard.game) return;
+  if ($('vs-play').hidden) return;
   const wide = window.innerWidth >= 720;
   const sidePad = 12;
   const total = document.documentElement.clientWidth - APP_PAD * 2;
   const width = (wide ? (total - 14) / 2 : total) - sidePad * 2 - 4;
   const wrap = $('vs-my-board').parentElement;
   const height = wide ? window.innerHeight - docTop(wrap) - 80 : window.innerHeight * 0.6;
-  myBoard.fit({ width, height, minCell: CELL_MIN, maxCell: CELL_MAX });
-  ensureNoScroll(myBoard, wrap, height);
-  if (oppBoard.game) {
-    const oppHeight = wide ? height : Infinity;
-    oppBoard.fit({ width, height: oppHeight, minCell: 8, maxCell: wide ? CELL_MAX : 22 });
-    ensureNoScroll(oppBoard, $('vs-opp-board').parentElement, oppHeight);
+  if (leftBoard.game) {
+    leftBoard.fit({ width, height, minCell: CELL_MIN, maxCell: CELL_MAX });
+    ensureNoScroll(leftBoard, wrap, height);
+  }
+  if (rightBoard.game) {
+    const spectating = !isPlayer();
+    const oppHeight = wide || spectating ? height : Infinity;
+    rightBoard.fit({ width, height: oppHeight, minCell: 8, maxCell: wide || spectating ? CELL_MAX : 22 });
+    ensureNoScroll(rightBoard, $('vs-opp-board').parentElement, oppHeight);
   }
 }
 
@@ -446,7 +483,7 @@ function connectionChip() {
   chip.className = 'chip';
   const status = vs?.status ?? 'connecting';
   if (status === 'online') {
-    chip.textContent = '온라인';
+    chip.textContent = isPlayer() ? '온라인' : '👀 관전';
     chip.classList.add('on');
   } else if (status === 'reconnecting') {
     chip.textContent = '재연결 중…';
@@ -456,71 +493,119 @@ function connectionChip() {
   }
 }
 
-function renderChat(chat, you) {
+function renderChat(chat) {
   const log = $('chat-log');
   log.replaceChildren();
+  const myPid = isPlayer() ? seatL()?.pid : vs?.pid;
   for (const line of chat) {
     const li = document.createElement('li');
-    if (line.player === you) li.className = 'me';
-    li.append(span('who', line.name), span('text', line.text));
+    if (line.pid && line.pid === myPid) li.className = 'me';
+    li.append(span('who', line.player === null ? `👀 ${line.name}` : line.name), span('text', line.text));
     log.append(li);
   }
   log.scrollTop = log.scrollHeight;
 }
 
-const REASON_LABEL = { clear: '다 열기', mine: '지뢰', forfeit: '기권' };
+const OUTCOME_LABEL = { clear: '다 열기', mine: '지뢰', stopped: '중단' };
+const REASON_LABEL = { points: '점수', forfeit: '기권' };
 
-/** 배너의 스코어보드 — 이 방에서 이긴 판 수. 상대가 들어온 뒤부터 보인다. */
+/** 배너의 스코어보드 — 이 방에서 이긴 판 수. 두 자리가 다 찼을 때만. */
 function renderScore(view) {
   const box = $('vs-score');
-  box.hidden = !view.opponent.joined;
+  const L = seatL(view);
+  const R = seatR(view);
+  box.hidden = !(L?.joined && R?.joined);
   if (box.hidden) return;
-  const { you, opponent } = view.score;
-  $('vs-score-me').textContent = you;
-  $('vs-score-opp').textContent = opponent;
-  $('vs-score-me-name').textContent = view.me.name;
-  $('vs-score-opp-name').textContent = view.opponent.name;
-  box.classList.toggle('lead', you > opponent);
-  box.classList.toggle('behind', you < opponent);
+  $('vs-score-me').textContent = L.wins;
+  $('vs-score-opp').textContent = R.wins;
+  $('vs-score-me-name').textContent = L.name;
+  $('vs-score-opp-name').textContent = R.name;
+  box.classList.toggle('lead', L.wins > R.wins);
+  box.classList.toggle('behind', L.wins < R.wins);
 }
 
-/** 결과 화면의 판별 기록 (최근 것이 위). */
+/** 결과 화면의 판별 기록 (최근 것이 위). 왼쪽 자리 기준으로 점수를 적는다. */
 function renderHistory(view) {
   const list = $('vs-history');
   list.replaceChildren();
   list.hidden = view.history.length === 0;
+  const l = leftIndex();
   for (const h of [...view.history].reverse().slice(0, 8)) {
     const li = document.createElement('li');
-    li.className = h.winner === 'you' ? 'win' : 'lose';
-    const who = h.winner === 'you' ? `${view.me.name} 승` : `${view.opponent.name} 승`;
+    const mineWin = h.winner === l;
+    li.className = h.winner === 'draw' ? '' : mineWin ? 'win' : 'lose';
+    const who = h.winner === 'draw' ? '무승부' : `${h.names[h.winner]} 승`;
+    const why = h.reason === 'forfeit' ? '기권' : `${OUTCOME_LABEL[h.outcome[l]]} / ${OUTCOME_LABEL[h.outcome[1 - l]]}`;
     li.append(
       span('no', `${h.gameNo}판`),
       span('who', who),
-      span('why', `${REASON_LABEL[h.reason] ?? h.reason} · ${h.myOpened}:${h.oppOpened}칸 · ${formatTime(h.ms)}`),
+      span('why', `${h.points[l]} : ${h.points[1 - l]} · ${why} · ${formatTime(h.ms)}`),
     );
     list.append(li);
   }
 }
 
-function vsResultTexts(view) {
-  const name = view.opponent.name;
-  if (view.winner === 'you') {
-    const detail = {
-      clear: '먼저 다 열었어요!',
-      mine: `${name}이(가) 지뢰를 밟았어요.`,
-      forfeit: `${name}이(가) 나가서 승리했습니다.`,
-    };
-    return ['승리 🎉', 'win', detail[view.overReason] ?? '승리했습니다.'];
+/** 결과 화면의 점수 내역표 — 두 사람 나란히. */
+function renderBreakdown(view) {
+  const table = $('vs-breakdown');
+  table.replaceChildren();
+  const L = seatL(view);
+  const R = seatR(view);
+  if (!L?.board || !R?.board) return;
+  const lp = scoreOfGame(leftBoard.game, view.total, serverNow());
+  const rp = scoreOfGame(rightBoard.game, view.total, serverNow());
+  const rows = [
+    ['연 칸 × 10', lp.cells, rp.cells, 'plus'],
+    ['걸린 시간 (초당 −1)', -lp.time, -rp.time, 'minus'],
+    ['다 열기 보너스', lp.clear, rp.clear, 'plus'],
+    ['지뢰 페널티', -lp.mine, -rp.mine, 'minus'],
+  ];
+  const thead = document.createElement('thead');
+  thead.innerHTML = `<tr><th></th><th>${escapeHtml(L.name)}</th><th>${escapeHtml(R.name)}</th></tr>`;
+  const tbody = document.createElement('tbody');
+  for (const [label, a, b, cls] of rows) {
+    if (a === 0 && b === 0 && (cls === 'minus' ? true : label !== '연 칸 × 10')) continue;   // 0 인 줄은 생략
+    const tr = document.createElement('tr');
+    tr.append(cell('td', label), cell('td', fmtSigned(a), a ? cls : ''), cell('td', fmtSigned(b), b ? cls : ''));
+    tbody.append(tr);
   }
-  const detail = {
-    clear: `${name}이(가) 먼저 다 열었어요.`,
-    mine: '지뢰를 밟았어요.',
-    forfeit: '기권했습니다.',
-  };
-  return [view.overReason === 'mine' ? '펑!' : '패배', 'lose', detail[view.overReason] ?? '아쉽네요.'];
+  const tfoot = document.createElement('tfoot');
+  const tr = document.createElement('tr');
+  const l = leftIndex();
+  tr.append(cell('td', '합계'), cell('td', String(lp.total), view.winner === l ? 'win' : ''), cell('td', String(rp.total), view.winner === 1 - l ? 'win' : ''));
+  tfoot.append(tr);
+  table.append(thead, tbody, tfoot);
 }
 
-/** 시계·카운트다운·진행률처럼 매 순간 바뀌는 것만 (200ms 마다) */
+function cell(tag, text, cls = '') {
+  const el = document.createElement(tag);
+  el.textContent = text;
+  if (cls) el.className = cls;
+  return el;
+}
+const fmtSigned = (n) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
+const escapeHtml = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function vsResultTexts(view) {
+  const L = seatL(view);
+  const R = seatR(view);
+  const l = leftIndex();
+  const me = isPlayer();
+  const winnerName = view.winner === 'draw' ? null : view.seats[view.winner]?.name;
+  if (view.winner === 'draw') return ['무승부', 'draw', '점수가 똑같아요!'];
+  const iWon = view.winner === l;
+  if (view.overReason === 'forfeit') {
+    const loser = view.seats[1 - view.winner]?.name;
+    if (!me) return [`${winnerName} 승리`, 'win', `${loser}이(가) 기권했어요.`];
+    return iWon ? ['승리 🎉', 'win', `${R.name}이(가) 나가서 승리했습니다.`] : ['패배', 'lose', '기권했습니다.'];
+  }
+  const outcome = (seat) => OUTCOME_LABEL[seat.boardPhase === 'won' ? 'clear' : seat.boardPhase === 'lost' ? 'mine' : 'stopped'];
+  const detail = `${L.name} ${outcome(L)} · ${R.name} ${outcome(R)}`;
+  if (!me) return [`${winnerName} 승리`, 'win', detail];
+  return iWon ? ['승리 🎉', 'win', detail] : ['패배', 'lose', detail];
+}
+
+/** 시계·카운트다운·점수·진행률처럼 매 순간 바뀌는 것만 (200ms 마다) */
 function renderVersusLive() {
   const view = vs?.view;
   if (!view) return;
@@ -534,15 +619,92 @@ function renderVersusLive() {
     count.hidden = true;
     $('vs-my-board').classList.remove('waiting');
   }
-  const stat = (p, g) => {
+  const now = serverNow();
+  const stat = (g) => {
     if (!g) return '';
-    const secs = Math.floor(M.elapsedMs(g, serverNow()) / 1000);
-    return `${g.opened}/${view.total}칸 · 🚩 ${p.flags ?? g.flags}/${view.mines} · ${pad3(secs)}`;
+    const secs = Math.floor(M.elapsedMs(g, now) / 1000);
+    return `${g.opened}/${view.total}칸 · 🚩 ${g.flags}/${view.mines} · ${pad3(secs)}`;
   };
-  $('vs-my-stats').textContent = stat(view.me, replica);
-  $('vs-opp-stats').textContent = stat(view.opponent, oppBoard.game);
-  $('vs-my-progress').style.width = replica ? `${(replica.opened / view.total) * 100}%` : '0';
-  $('vs-opp-progress').style.width = oppBoard.game ? `${(oppBoard.game.opened / view.total) * 100}%` : '0';
+  const lg = leftBoard.game;
+  const rg = rightBoard.game;
+  $('vs-my-stats').textContent = stat(lg);
+  $('vs-opp-stats').textContent = stat(rg);
+  $('vs-my-pts').textContent = lg ? `${scoreOfGame(lg, view.total, now).total}점` : '';
+  $('vs-opp-pts').textContent = rg ? `${scoreOfGame(rg, view.total, now).total}점` : '';
+  $('vs-my-progress').style.width = lg ? `${(lg.opened / view.total) * 100}%` : '0';
+  $('vs-opp-progress').style.width = rg ? `${(rg.opened / view.total) * 100}%` : '0';
+}
+
+/** 관전자 조작 패널: 빈 자리에 앉기 / 교대 요청·취소 */
+function renderSpectatorBar(view) {
+  const box = $('vs-spec');
+  box.hidden = isPlayer();
+  if (box.hidden) return;
+  const actions = $('vs-spec-actions');
+  actions.replaceChildren();
+  const note = $('vs-spec-note');
+  if (vs.freeSeat !== null) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'primary';
+    b.textContent = '🪑 빈 자리에 앉기';
+    b.addEventListener('click', () => engine?.sit());
+    actions.append(b);
+    note.textContent = '앉으면 바로 다음 판이 시작돼요.';
+  } else {
+    view.seats.forEach((seat, i) => {
+      if (!seat.joined) return;
+      const b = document.createElement('button');
+      b.type = 'button';
+      const mine = vs.mySwap === i;
+      b.className = mine ? 'primary' : 'secondary';
+      b.textContent = mine ? `${seat.name}와 교대 요청 중 · 취소` : `🔁 ${seat.name}와 교대 요청`;
+      b.addEventListener('click', () => engine?.swap(mine ? null : i));
+      actions.append(b);
+    });
+    note.textContent = vs.mySwap !== null
+      ? '상대가 수락하면 자리를 바꿔요. 판이 진행 중이면 끝난 뒤에 바꿀 수 있어요.'
+      : '자리가 다 찼어요. 플레이어에게 교대를 요청할 수 있어요.';
+  }
+}
+
+/** 플레이어에게 들어온 교대 요청 */
+function renderSwapRequests(view) {
+  const box = $('vs-swaps');
+  const swaps = isPlayer() ? vs.swaps ?? [] : [];
+  box.hidden = swaps.length === 0;
+  box.replaceChildren();
+  if (box.hidden) return;
+  const busy = view.phase === 'countdown' || view.phase === 'playing';
+  for (const req of swaps) {
+    const row = document.createElement('div');
+    row.className = 'req';
+    row.append(span('lead', `🔁 ${req.name}님이 내 자리와 교대를 요청했어요`));
+    const ok = document.createElement('button');
+    ok.type = 'button';
+    ok.className = 'primary';
+    ok.textContent = '수락';
+    ok.disabled = busy;
+    ok.addEventListener('click', () => engine?.swapAccept(req.pid));
+    const no = document.createElement('button');
+    no.type = 'button';
+    no.className = 'secondary';
+    no.textContent = '거절';
+    no.addEventListener('click', () => engine?.swapDecline(req.pid));
+    row.append(ok, no);
+    if (busy) row.append(span('muted', '판이 끝난 뒤에 수락할 수 있어요.'));
+    box.append(row);
+  }
+}
+
+function renderPeople() {
+  const el = $('vs-people');
+  const people = vs?.people;
+  el.hidden = !people;
+  if (!people) return;
+  const specs = people.spectators;
+  const names = specs.map((s) => (s.present ? s.name : `${s.name}(끊김)`)).join(', ');
+  el.textContent = specs.length ? `👀 관전 ${specs.length}명 — ${names}` : '👀 관전자 없음';
 }
 
 function renderVersus() {
@@ -561,70 +723,87 @@ function renderVersus() {
   if (!view) {
     title.textContent = vs?.status === 'reconnecting' ? '다시 연결하는 중…' : '연결 중…';
     sub.textContent = '';
-    $('vs-lobby').hidden = true;
-    $('vs-arena').hidden = true;
-    $('vs-result').hidden = true;
-    $('vs-chat').hidden = true;
-    $('vs-score').hidden = true;
+    for (const id of ['vs-lobby', 'vs-arena', 'vs-result', 'vs-chat', 'vs-score', 'vs-spec', 'vs-swaps', 'vs-people']) $(id).hidden = true;
     return;
   }
 
-  const me = view.me;
-  const opp = view.opponent;
-  $('vs-lobby').hidden = view.phase !== 'lobby';
-  $('vs-arena').hidden = view.phase === 'lobby';
+  const me = isPlayer();
+  const L = seatL(view);
+  const R = seatR(view);
+  const bothSeated = L?.joined && R?.joined;
+
+  $('vs-lobby').hidden = !(view.phase === 'lobby' && me);
+  $('vs-arena').hidden = !(view.phase !== 'lobby' || (!me && (L?.board || R?.board)));
   $('vs-result').hidden = view.phase !== 'over';
   $('vs-chat').hidden = false;
+  $('vs-tools').hidden = !me;
+  $('btn-rematch').hidden = !me;
+  document.querySelectorAll('.stand-btn').forEach((b) => { b.hidden = !me; });
   $('lobby-code').textContent = code ?? '';
-  $('vs-my-name').textContent = `${me.name} (나)`;
-  $('vs-opp-name').textContent = opp.joined ? opp.name : '상대';
-  renderScore(view);
+  $('vs-my-name').textContent = L?.joined ? (me ? `${L.name} (나)` : L.name) : '빈 자리';
+  $('vs-opp-name').textContent = R?.joined ? R.name : '빈 자리';
   $('vs-hint').textContent = coarse ? '탭 열기 · 길게 눌러 깃발' : '좌클릭 열기 · 우클릭 깃발';
+  renderScore(view);
+  renderPeople();
+  renderSpectatorBar(view);
+  renderSwapRequests(view);
 
-  const oppSide = document.querySelector('.vs-side.opp');
-  oppSide.classList.toggle('away', opp.joined && !opp.present);
-  oppSide.classList.toggle('finished', opp.boardPhase === 'lost' || opp.boardPhase === 'won');
-  document.querySelector('.vs-side.me').classList.toggle('finished', me.boardPhase === 'lost' || me.boardPhase === 'won');
-  let note = '';
-  if (opp.joined && !opp.present) {
-    const left = vs.grace ? Math.max(0, Math.ceil((vs.grace - serverNow()) / 1000)) : null;
-    note = left === null ? '상대가 나갔어요' : `상대 연결이 끊겼어요 — ${left}초 안에 돌아오지 않으면 기권 처리`;
-  } else if (opp.boardPhase === 'lost') note = '💥 상대가 지뢰를 밟았어요';
-  else if (opp.boardPhase === 'won') note = '😎 상대가 다 열었어요';
-  $('vs-opp-note').textContent = note;
+  const finished = (seat) => seat?.boardPhase === 'lost' || seat?.boardPhase === 'won';
+  const sideL = document.querySelector('.vs-side.me');
+  const sideR = document.querySelector('.vs-side.opp');
+  sideL.classList.toggle('finished', finished(L));
+  sideR.classList.toggle('finished', finished(R));
+  sideR.classList.toggle('away', Boolean(R?.joined && !R.present));
+  sideL.classList.toggle('away', Boolean(L?.joined && !L.present && !me));
+
+  const noteFor = (seat, isMe) => {
+    if (!seat?.joined) return '';
+    if (!seat.present && !isMe) {
+      const left = vs.grace ? Math.max(0, Math.ceil((vs.grace - serverNow()) / 1000)) : null;
+      return left === null ? '연결이 끊겼어요' : `연결이 끊겼어요 — ${left}초 안에 돌아오지 않으면 기권 처리`;
+    }
+    if (view.phase === 'playing' || view.phase === 'over') {
+      if (seat.boardPhase === 'lost') return isMe ? '💥 지뢰! 내 판은 여기까지 — 상대가 끝낼 때까지 점수는 그대로예요' : '💥 지뢰를 밟았어요 — 판이 멈췄어요';
+      if (seat.boardPhase === 'won') return isMe ? '😎 다 열었어요!' : '😎 다 열었어요';
+    }
+    return '';
+  };
+  $('vs-my-note').textContent = noteFor(L, me);
+  $('vs-opp-note').textContent = noteFor(R, false);
 
   if (view.phase === 'lobby') {
-    title.textContent = '상대를 기다리는 중…';
-    sub.textContent = '코드나 초대 링크를 보내면 바로 시작돼요.';
+    title.textContent = me ? '상대를 기다리는 중…' : '플레이어를 기다리는 중…';
+    sub.textContent = me ? '코드나 초대 링크를 보내면 바로 시작돼요.' : (vs.freeSeat !== null ? '빈 자리가 있어요 — 앉으면 바로 시작!' : '');
   } else if (view.phase === 'countdown') {
     title.textContent = `${view.gameNo}번째 판 — 준비!`;
-    sub.textContent = `${view.rows}×${view.cols} · 지뢰 ${view.mines}개 · 출발 지점은 열려 있어요`;
+    sub.textContent = `${view.rows}×${view.cols} · 지뢰 ${view.mines}개 · 연 칸 × 10 − 초 + 다 열기 보너스 − 지뢰 페널티`;
   } else if (view.phase === 'playing') {
-    title.textContent = '진행 중';
-    sub.textContent = '먼저 다 여는 쪽이 승리 · 지뢰를 밟으면 그 자리에서 패배';
+    const lOut = finished(L);
+    const rOut = finished(R);
+    title.textContent = lOut || rOut ? '한쪽 판이 끝났어요 — 다른 쪽이 마칠 때까지' : '진행 중';
+    sub.textContent = '점수로 승부 · 다 열면 그 순간 끝 · 지뢰를 밟으면 내 판만 끝';
   } else {
     const [badge, cls, detail] = vsResultTexts(view);
-    title.textContent = view.winner === 'you' ? '승리!' : '패배';
+    title.textContent = view.winner === 'draw' ? '무승부' : me ? (view.winner === leftIndex() ? '승리!' : '패배') : `${view.seats[view.winner]?.name} 승리`;
     sub.textContent = detail;
-    $('vs-result-badge').textContent = `${badge} · ${view.score.you} : ${view.score.opponent}`;
+    const lp = leftBoard.game ? scoreOfGame(leftBoard.game, view.total, serverNow()).total : 0;
+    const rp = rightBoard.game ? scoreOfGame(rightBoard.game, view.total, serverNow()).total : 0;
+    $('vs-result-badge').textContent = `${badge} · ${lp} : ${rp}`;
     $('vs-result-badge').className = `result ${cls}`;
     $('vs-result-detail').textContent = detail;
-    const mine = replica ? `${replica.opened}/${view.total}칸` : '';
-    const theirs = oppBoard.game ? `${oppBoard.game.opened}/${view.total}칸` : '';
-    $('vs-result-sub').textContent = replica ? `나 ${mine} · ${opp.name} ${theirs} · ${formatTime(M.elapsedMs(replica, serverNow()))}` : '';
+    renderBreakdown(view);
+    $('btn-rematch').disabled = !me || L.rematch || !bothSeated;
+    $('rematch-state').textContent = !me ? ''
+      : L.rematch ? '상대의 재대결 수락을 기다리는 중…'
+        : R?.rematch ? `${R.name}이(가) 재대결을 원해요!` : '';
     renderHistory(view);
-    $('btn-rematch').disabled = me.rematch || !opp.joined;
-    $('rematch-state').textContent = me.rematch
-      ? '상대의 재대결 수락을 기다리는 중…'
-      : opp.rematch ? `${opp.name}이(가) 재대결을 원해요!` : '';
   }
 
-  renderChat(vs.chat ?? [], view.you);
+  renderChat(vs.chat ?? []);
   renderVersusLive();
 }
 
 /* ───────── 입력 묶기 ───────── */
-
 function bindControls() {
   const difficulty = $('difficulty');
   const custom = $('custom');
@@ -736,28 +915,48 @@ function bindVersus() {
     startVersus({ type: 'create', name: nickname(), options: currentOptions() });
   });
 
-  $('btn-join').addEventListener('click', () => {
+  const codeFromInput = () => {
     const code = $('join-code').value.trim().toUpperCase();
     if (code.length !== 4) {
       toast('방 코드는 4글자예요');
-      return;
+      return null;
     }
-    startVersus({ type: 'join', name: nickname(), code });
+    return code;
+  };
+  $('btn-join').addEventListener('click', () => {
+    const code = codeFromInput();
+    if (code) startVersus({ type: 'join', name: nickname(), code });
+  });
+  $('btn-watch').addEventListener('click', () => {
+    const code = codeFromInput();
+    if (code) startVersus({ type: 'watch', name: nickname(), code });
   });
   $('join-code').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') $('btn-join').click();
   });
 
-  const leave = () => {
+  const live = () => {
     const phase = vs?.view?.phase;
-    const live = phase === 'countdown' || phase === 'playing';
-    if (live && !confirm('지금 나가면 기권 처리됩니다. 나갈까요?')) return;
-    if (live && engine) engine.surrender();
+    return isPlayer() && (phase === 'countdown' || phase === 'playing');
+  };
+  const leave = () => {
+    if (live() && !confirm('지금 나가면 기권 처리됩니다. 나갈까요?')) return;
+    if (live() && engine) engine.surrender();
     stopVersus();
     showScreen('vs-home');
   };
   $('btn-leave').addEventListener('click', leave);
   $('btn-vs-home').addEventListener('click', leave);
+
+  // 관전으로 빠지기 — 진행 중이면 기권부터
+  document.querySelectorAll('.stand-btn').forEach((b) => b.addEventListener('click', () => {
+    if (!engine || !isPlayer()) return;
+    if (live()) {
+      if (!confirm('지금 빠지면 기권 처리됩니다. 관전으로 빠질까요?')) return;
+      engine.surrender();
+    }
+    engine.stand();
+  }));
 
   $('btn-rematch').addEventListener('click', () => engine?.rematch());
   $('room-code').addEventListener('click', () => vs?.code && copy(vs.code, '방 코드'));
@@ -788,7 +987,7 @@ if (roomParam) {
   $('join-code').value = code;
   setMode('versus', { save: false });
   if (loadToken(code, GAME)) {
-    // 새로고침 전에 있던 방 — 토큰이 있으면 그대로 복귀
+    // 새로고침 전에 있던 방 — 토큰이 있으면 원래 역할(자리/관전)로 복귀
     startVersus({ type: 'join', name: nickname(), code });
   } else {
     toast(`방 ${code} — 닉네임을 넣고 참가하기를 누르세요`);

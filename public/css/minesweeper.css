@@ -238,8 +238,13 @@
 .vs-side.me { border-color: var(--accent); }
 .vs-side.opp { opacity: .92; }
 .vs-side.opp.away { opacity: .6; }
-.vs-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.vs-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
 .vs-head strong { font-size: 1rem; }
+.vs-head .pts { font-size: 1.05rem; font-variant-numeric: tabular-nums; color: var(--accent); }
+.vs-side.opp .pts { color: var(--warn); }
+.vs-head .vs-stats { margin-left: auto; }
+.side-note { margin: 8px 0 0; font-size: .85rem; }
+.side-note:empty { display: none; }
 .vs-stats { color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .progress { height: 6px; background: var(--surface-2); border-radius: 999px; overflow: hidden; margin-bottom: 10px; }
 .progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
@@ -249,6 +254,27 @@
 #vs-opp-note { margin: 8px 0 0; font-size: .85rem; }
 .vs-side.finished .ms-board { opacity: .7; }
 #vs-play .ms-board.waiting { opacity: .45; pointer-events: none; }
+.people { margin: -4px 0 12px; font-size: .85rem; }
+
+.spec-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.spec-bar .lead { margin: 0; }
+.spec-bar .row { flex: 1 1 auto; margin: 0; }
+.spec-bar .row > button { flex: 0 1 auto; width: auto; }
+.spec-bar p { flex-basis: 100%; margin: 0; }
+
+.swap-box .req { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.swap-box .req + .req { margin-top: 8px; }
+.swap-box .req button { width: auto; flex: 0 0 auto; padding: 7px 14px; }
+.swap-box .req .muted { flex-basis: 100%; margin: 0; }
+
+.breakdown { margin: 4px auto 14px; border-collapse: collapse; font-size: .88rem; font-variant-numeric: tabular-nums; }
+.breakdown th, .breakdown td { padding: 3px 12px; text-align: right; }
+.breakdown th:first-child, .breakdown td:first-child { text-align: left; color: var(--muted); font-weight: 500; }
+.breakdown thead th { color: var(--text); font-weight: 700; border-bottom: 1px solid var(--line); }
+.breakdown tfoot td { font-weight: 800; border-top: 1px solid var(--line); font-size: 1rem; }
+.breakdown .minus { color: var(--danger); }
+.breakdown .plus { color: var(--accent); }
+.breakdown .win { color: var(--accent); }
 
 @media (max-width: 480px) {
   .ms-title { font-size: 1.15rem; }
