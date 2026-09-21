@@ -27,6 +27,11 @@ const MIME = {
   '.webmanifest': 'application/manifest+json',
 };
 
+// 확장자 없는 깔끔한 주소 → 실제 파일.
+const PAGES = {
+  '/minesweeper': '/minesweeper.html',
+};
+
 // URL 앞부분 → 실제 디렉터리. 이 두 곳 밖으로는 절대 나가지 않는다.
 const MOUNTS = [
   { prefix: '/shared/', dir: path.join(ROOT, 'shared') },
@@ -57,6 +62,7 @@ function resolveFile(urlPath) {
     return null;
   }
   if (decoded.endsWith('/')) decoded += 'index.html';
+  if (PAGES[decoded]) decoded = PAGES[decoded];
   for (const { prefix, dir } of MOUNTS) {
     if (!decoded.startsWith(prefix)) continue;
     const rel = decoded.slice(prefix.length);

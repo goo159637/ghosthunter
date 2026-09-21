@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>지뢰찾기</title>
+<meta name="description" content="브라우저에서 바로 하는 클래식 지뢰찾기. 쉬움·보통·어려움·커스텀, 최고 기록 저장.">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%92%A3%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/css/style.css">
+<link rel="stylesheet" href="/css/minesweeper.css">
+</head>
+<body>
+<main id="app" class="ms">
+
+  <header class="topbar">
+    <a href="/" class="ghost back">← 홈</a>
+    <h1 class="ms-title"><span aria-hidden="true">💣</span> 지뢰찾기</h1>
+    <span id="best" class="chip" hidden></span>
+  </header>
+
+  <!-- 설정 -->
+  <section class="panel ms-controls">
+    <div class="row">
+      <label class="field">
+        <span>난이도</span>
+        <select id="difficulty">
+          <option value="easy">쉬움 · 9×9 · 지뢰 10</option>
+          <option value="normal" selected>보통 · 16×16 · 지뢰 40</option>
+          <option value="hard">어려움 · 16×30 · 지뢰 99</option>
+          <option value="custom">커스텀</option>
+        </select>
+      </label>
+      <button id="btn-new" class="primary" type="button">새 게임</button>
+    </div>
+    <div id="custom" class="row custom" hidden>
+      <label class="field">
+        <span>세로</span>
+        <input id="c-rows" type="number" inputmode="numeric" min="5" max="40" value="12">
+      </label>
+      <label class="field">
+        <span>가로</span>
+        <input id="c-cols" type="number" inputmode="numeric" min="5" max="60" value="12">
+      </label>
+      <label class="field">
+        <span>지뢰</span>
+        <input id="c-mines" type="number" inputmode="numeric" min="1" value="20">
+      </label>
+    </div>
+  </section>
+
+  <!-- 판 -->
+  <section class="panel ms-game">
+    <div class="ms-status">
+      <span id="mines-left" class="counter" title="남은 지뢰" aria-label="남은 지뢰">000</span>
+      <button id="face" class="face" type="button" aria-label="새 게임">🙂</button>
+      <span id="clock" class="counter" title="경과 시간" aria-label="경과 시간">000</span>
+    </div>
+
+    <div id="board-wrap" class="board-wrap">
+      <div id="board" class="ms-board" role="grid" aria-label="지뢰판"></div>
+    </div>
+
+    <div class="ms-tools">
+      <button id="btn-flagmode" class="secondary toggle" type="button" aria-pressed="false">🚩 깃발 모드</button>
+      <label class="check">
+        <input id="opt-question" type="checkbox">
+        <span>물음표 사용</span>
+      </label>
+    </div>
+    <p id="hint" class="muted"></p>
+  </section>
+
+  <!-- 결과 -->
+  <section id="result" class="panel ms-result" hidden>
+    <div id="result-badge" class="result"></div>
+    <p id="result-detail" class="lead"></p>
+    <p id="result-sub" class="muted"></p>
+    <div class="row center">
+      <button id="btn-again" class="primary" type="button">다시 하기</button>
+    </div>
+  </section>
+
+  <details class="rules">
+    <summary>규칙 보기</summary>
+    <ul>
+      <li>숫자는 <b>그 칸 주변 8칸에 있는 지뢰 수</b>입니다. 지뢰를 밟지 않고 나머지 칸을 전부 열면 성공.</li>
+      <li>첫 클릭은 절대 터지지 않고, 그 주변도 비어 있습니다.</li>
+      <li><b>PC</b> — 왼쪽 클릭 열기 · 오른쪽 클릭 깃발 · 열린 숫자를 클릭하면 주변 깃발 수가 맞을 때 나머지를 한꺼번에 엽니다.</li>
+      <li><b>모바일</b> — 탭 열기 · 길게 눌러 깃발 · <b>깃발 모드</b>를 켜면 탭이 깃발이 됩니다.</li>
+      <li><b>키보드</b> — 방향키 이동 · Enter/Space 열기 · F 깃발 · N 새 게임</li>
+      <li>쉬움 / 보통 / 어려움의 최고 기록은 이 브라우저에 저장됩니다.</li>
+    </ul>
+  </details>
+
+  <div id="toast" class="toast" hidden></div>
+</main>
+<script type="module" src="/js/minesweeper.js"></script>
+</body>
+</html>

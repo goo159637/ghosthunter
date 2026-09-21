@@ -125,6 +125,15 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .rules li { margin-bottom: 6px; }
 .rules code { background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
 
+.card.link {
+  flex-direction: row; align-items: center; gap: 14px;
+  margin-top: 14px; text-decoration: none; color: inherit;
+}
+.card.link:hover { border-color: var(--accent); }
+.card.link .link-icon { font-size: 1.6rem; }
+.card.link .link-body { flex: 1; display: flex; flex-direction: column; }
+.card.link .link-arrow { color: var(--muted); font-weight: 700; }
+
 /* ── 게임 화면 ── */
 .topbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .topbar .chip { margin-left: auto; }

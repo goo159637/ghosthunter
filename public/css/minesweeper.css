@@ -1,0 +1,131 @@
+/* 지뢰찾기 — style.css 의 변수와 기본 컴포넌트를 그대로 쓴다 */
+.ms {
+  --cell: 32px;
+  --gap: 2px;
+  --closed: #2b3852;
+  --closed-hi: #3a4a6a;
+  --opened: #111a2c;
+  --n1: #5b9dff; --n2: #3ddc84; --n3: #ff6b6b; --n4: #b48cff;
+  --n5: #ffb340; --n6: #34d3c6; --n7: #ff7ac8; --n8: #a3b1cc;
+}
+@media (prefers-color-scheme: light) {
+  .ms {
+    --closed: #c9d3e6;
+    --closed-hi: #b7c3da;
+    --opened: #f7f9fd;
+    --n1: #1d4ed8; --n2: #15803d; --n3: #dc2626; --n4: #6d28d9;
+    --n5: #b45309; --n6: #0f766e; --n7: #be185d; --n8: #4b5563;
+  }
+}
+
+.ms .topbar { margin-bottom: 14px; }
+.ms .back { text-decoration: none; font-weight: 600; }
+.ms-title { font-size: 1.3rem; margin: 0; flex: 1; text-align: center; }
+.ms .topbar .chip { margin-left: 0; }
+
+.ms-controls .row { margin-bottom: 0; align-items: flex-end; }
+.ms-controls .row > .field { flex: 3 1 200px; margin-bottom: 0; }
+.ms-controls .row > button { flex: 1 1 110px; max-width: 160px; }
+.ms-controls .custom { margin-top: 10px; }
+.ms-controls .custom .field { flex: 1 1 80px; }
+
+/* ── 상태줄 ── */
+.ms-status {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 12px;
+}
+.counter {
+  min-width: 4.2em; text-align: center;
+  background: var(--opened); color: var(--danger);
+  border: 1px solid var(--line); border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 1.35rem; font-weight: 800; font-variant-numeric: tabular-nums;
+  letter-spacing: .08em;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+.face {
+  width: auto; font-size: 1.7rem; line-height: 1;
+  padding: 6px 12px; background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.face:active { transform: translateY(1px); }
+
+/* ── 판 ── */
+.board-wrap {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 2px;
+  margin: 0 -2px;
+}
+.ms-board {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 9), var(--cell));
+  grid-auto-rows: var(--cell);
+  gap: var(--gap);
+  width: max-content;
+  margin: 0 auto;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+.cell {
+  width: var(--cell); height: var(--cell);
+  padding: 0; margin: 0;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: var(--closed);
+  color: var(--text);
+  font-size: calc(var(--cell) * .55);
+  font-weight: 800; line-height: 1;
+  font-variant-numeric: tabular-nums;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .08s;
+  cursor: pointer;
+}
+.cell:hover { background: var(--closed-hi); }
+.cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; z-index: 1; }
+.cell.open {
+  background: var(--opened);
+  border-color: var(--line);
+  cursor: default;
+}
+.cell.open:hover { background: var(--opened); }
+.cell.open.n:hover { background: var(--surface-2); cursor: pointer; }
+.cell.flag, .cell.q { font-size: calc(var(--cell) * .52); }
+.cell.q { color: var(--muted); }
+.cell.mine { background: var(--surface-2); border-color: var(--line); }
+.cell.mine.boom { background: var(--danger); }
+.cell.wrong { background: var(--surface-2); border-color: var(--danger); position: relative; }
+.cell.wrong::after {
+  content: ''; position: absolute; inset: 15%;
+  background: linear-gradient(45deg, transparent 44%, var(--danger) 44%, var(--danger) 56%, transparent 56%),
+              linear-gradient(-45deg, transparent 44%, var(--danger) 44%, var(--danger) 56%, transparent 56%);
+}
+.cell.n1 { color: var(--n1); } .cell.n2 { color: var(--n2); } .cell.n3 { color: var(--n3); }
+.cell.n4 { color: var(--n4); } .cell.n5 { color: var(--n5); } .cell.n6 { color: var(--n6); }
+.cell.n7 { color: var(--n7); } .cell.n8 { color: var(--n8); }
+
+.ms-board.over .cell { cursor: default; }
+.ms-board.over .cell:not(.open):hover { background: var(--closed); }
+
+/* ── 도구 ── */
+.ms-tools { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+.ms-tools .toggle { width: auto; flex: 0 0 auto; }
+.ms-tools .toggle[aria-pressed="true"] {
+  background: var(--warn); color: #2a1a00; border-color: var(--warn);
+}
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: .9rem; color: var(--muted); cursor: pointer; }
+.check input { width: auto; padding: 0; margin: 0; accent-color: var(--accent); }
+.ms-game #hint { margin: 10px 0 0; }
+
+/* ── 결과 ── */
+.ms-result { text-align: center; }
+.ms-result .result { font-size: 1.8rem; }
+.ms-result .row > button { flex: 0 1 200px; }
+
+@media (max-width: 480px) {
+  .ms-title { font-size: 1.15rem; }
+  .counter { font-size: 1.15rem; min-width: 3.8em; }
+  .face { font-size: 1.5rem; }
+}
