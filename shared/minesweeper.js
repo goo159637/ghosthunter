@@ -262,3 +262,76 @@ export function cellView(game, i) {
     wrongFlag: lost && mark === Mark.FLAG && !game.mine[i],  // 잘못 꽂은 깃발
   };
 }
+
+/* ───────── 전송용 직렬화 ─────────
+ * 1:1 대전에서 서버가 판을 브라우저로 보낼 때 쓴다.
+ * 칸 하나가 글자 하나: '.' 닫힘 · F 깃발 · ? 물음표 · 0~8 열림 · * 드러난 지뢰 · X 터진 지뢰 · ! 잘못 꽂은 깃발
+ */
+
+/** 판 전체를 문자열로. cellView 와 같은 정보만 담으므로 상대에게 보내도 지뢰가 새지 않는다. */
+export function encodeBoard(game) {
+  let out = '';
+  for (let i = 0; i < game.rows * game.cols; i++) {
+    const v = cellView(game, i);
+    if (v.exploded) out += 'X';
+    else if (v.mine) out += '*';
+    else if (v.wrongFlag) out += '!';
+    else if (v.open) out += String(v.count);
+    else if (v.mark === Mark.FLAG) out += 'F';
+    else if (v.mark === Mark.QUESTION) out += '?';
+    else out += '.';
+  }
+  return out;
+}
+
+/** 지뢰 배치를 문자열로 ('*' 지뢰). 내 판을 브라우저가 미리 계산할 수 있게 본인에게만 보낸다. */
+export function encodeLayout(game) {
+  let out = '';
+  for (let i = 0; i < game.mine.length; i++) out += game.mine[i] ? '*' : '.';
+  return out;
+}
+
+/**
+ * 전송된 스냅샷에서 게임 객체를 되살린다.
+ * layout 이 있으면 reveal / toggleMark / chord 를 그대로 쓸 수 있는 완전한 게임이 되고,
+ * 없으면(상대 판) cellView 로 그리기만 할 수 있다.
+ */
+export function fromSnapshot(snap) {
+  const game = createGame(snap);
+  game.phase = Object.values(Phase).includes(snap.phase) ? snap.phase : Phase.PLAYING;
+  game.startedAt = snap.startedAt ?? null;
+  game.endedAt = snap.endedAt ?? null;
+  const size = game.rows * game.cols;
+  const board = String(snap.board ?? '').padEnd(size, '.');
+
+  if (typeof snap.layout === 'string' && snap.layout.length === size) {
+    for (let i = 0; i < size; i++) game.mine[i] = snap.layout[i] === '*';
+    for (let i = 0; i < size; i++) {
+      if (game.mine[i]) continue;
+      let n = 0;
+      for (const nb of neighbors(game, i)) if (game.mine[nb]) n++;
+      game.count[i] = n;
+    }
+  }
+
+  for (let i = 0; i < size; i++) {
+    const ch = board[i];
+    if (ch >= '0' && ch <= '8') {
+      game.open[i] = true;
+      game.opened++;
+      game.count[i] = Number(ch);
+    } else if (ch === 'F' || ch === '!') {
+      game.mark[i] = Mark.FLAG;
+      game.flags++;
+      // 진 판에서 'F' 는 맞게 꽂은 깃발이다 — layout 이 없어도 잘못 꽂은 것으로 그리지 않게
+      if (ch === 'F' && game.phase === Phase.LOST) game.mine[i] = true;
+    } else if (ch === '?') {
+      game.mark[i] = Mark.QUESTION;
+    } else if (ch === '*' || ch === 'X') {
+      game.mine[i] = true;
+      if (ch === 'X') game.exploded = i;
+    }
+  }
+  if (game.phase === Phase.WON) game.flags = game.mines;
+  return game;
+}

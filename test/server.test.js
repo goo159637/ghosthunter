@@ -210,3 +210,113 @@ test('없는 방·가득 찬 방·잘못된 요청은 에러로 돌려준다', a
   b.close();
   c.close();
 });
+
+/* ───────── 지뢰찾기 1:1 ───────── */
+
+test('지뢰찾기 방 — 카운트다운 뒤 출발, 조작이 상대에게 실시간으로 보이고, 지뢰를 밟으면 끝난다', async () => {
+  const a = connect();
+  const b = connect();
+  await a.open();
+  await b.open();
+
+  a.send({ t: 'create', game: 'minesweeper', name: '가', rows: 9, cols: 9, mines: 10, countdownSeconds: 1 });
+  const joinedA = await a.until((m) => m.t === 'joined');
+  assert.equal(joinedA.game, 'minesweeper');
+  const lobby = await a.state((v) => v.phase === 'lobby');
+  assert.equal(lobby.game, 'minesweeper');
+  assert.equal(lobby.view.me.board, undefined);
+
+  // 숫자야구 참가로는 못 들어간다
+  const wrong = connect();
+  await wrong.open();
+  wrong.send({ t: 'join', game: 'baseball', code: joinedA.code, name: '엉뚱' });
+  assert.equal((await wrong.until((m) => m.t === 'error')).code, 'wrong_game');
+  wrong.close();
+
+  b.send({ t: 'join', game: 'minesweeper', code: joinedA.code, name: '나' });
+  await b.until((m) => m.t === 'joined');
+  const countdown = await b.state((v) => v.phase === 'countdown');
+  assert.equal(typeof countdown.view.me.layout, 'string', '내 판의 지뢰 배치는 받는다');
+  assert.equal(countdown.view.opponent.layout, null, '상대 판의 지뢰 배치는 받지 않는다');
+  assert.equal(countdown.view.me.board.length, 81);
+  assert.ok(countdown.view.me.opened >= 9, '출발 지점이 열려 있다');
+  assert.ok(countdown.view.startAt > countdown.view.now);
+
+  // 카운트다운 중엔 거절 — 에러 대신 상태만 다시 온다 (ack 로 확인)
+  const safe = countdown.view.me.layout.split('').findIndex((ch, i) => ch === '.' && countdown.view.me.board[i] === '.');
+  b.send({ t: 'ms', a: 'reveal', i: safe, n: 1 });
+  const rejected = await b.until((m) => m.t === 'state' && m.ack === 1);
+  assert.equal(rejected.view.me.board[safe], '.');
+
+  // 1초 카운트다운이 끝나면 서버 ticker 가 출발시킨다
+  const playing = await a.state((v) => v.phase === 'playing');
+  assert.equal(playing.view.opponent.name, '나');
+
+  // 나가 깃발을 꽂으면 가의 화면에 바로 보인다
+  b.send({ t: 'ms', a: 'mark', i: safe, n: 2 });
+  const seenFlag = await a.state((v) => v.opponent.board[safe] === 'F');
+  assert.equal(seenFlag.view.opponent.flags, 1);
+  const ackB = await b.until((m) => m.t === 'state' && m.ack === 2);
+  assert.equal(ackB.view.me.board[safe], 'F');
+
+  // 가가 지뢰를 밟는다 → 나의 승리, 가의 판이 상대에게 공개된다
+  const viewA = playing.view;
+  const mine = viewA.me.layout.indexOf('*');
+  a.send({ t: 'ms', a: 'reveal', i: mine, n: 1 });
+  const overA = await a.state((v) => v.phase === 'over');
+  assert.equal(overA.view.winner, 'opponent');
+  assert.equal(overA.view.overReason, 'mine');
+  assert.equal(overA.view.me.board[mine], 'X');
+  const overB = await b.state((v) => v.phase === 'over');
+  assert.equal(overB.view.winner, 'you');
+  assert.equal(overB.view.opponent.board[mine], 'X');
+  assert.equal(overB.view.opponent.boardPhase, 'lost');
+
+  // 재대결 → 새 판, 새 카운트다운
+  a.send({ t: 'rematch' });
+  b.send({ t: 'rematch' });
+  const again = await a.state((v) => v.gameNo === 2);
+  assert.notEqual(again.view.phase, 'over');
+  assert.notEqual(again.view.me.layout, viewA.me.layout);
+
+  a.close();
+  b.close();
+});
+
+test('지뢰찾기 방 — 끊긴 자리로 돌아오면 판이 그대로고, 상대가 나가면 이긴다', async () => {
+  const a = connect();
+  const b = connect();
+  await a.open();
+  await b.open();
+
+  a.send({ t: 'create', game: 'minesweeper', name: '가', countdownSeconds: 0 });
+  const joined = await a.until((m) => m.t === 'joined');
+  b.send({ t: 'join', game: 'minesweeper', code: joined.code, name: '나' });
+  await b.until((m) => m.t === 'joined');
+  const playing = await a.state((v) => v.phase === 'playing');
+  const safe = playing.view.me.layout.split('').findIndex((ch, i) => ch === '.' && playing.view.me.board[i] === '.');
+  a.send({ t: 'ms', a: 'mark', i: safe, n: 7 });
+  await a.until((m) => m.t === 'state' && m.ack === 7);
+
+  a.close();
+  const gone = await b.state((v) => v.opponent.present === false);
+  assert.ok(gone.grace > Date.now());
+
+  const a2 = connect();
+  await a2.open();
+  a2.send({ t: 'rejoin', game: 'minesweeper', code: joined.code, token: joined.token });
+  const back = await a2.until((m) => m.t === 'joined');
+  assert.equal(back.you, 0);
+  const restored = await a2.state((v) => v.phase === 'playing');
+  assert.equal(restored.ack, 7, '조작 번호가 유지된다');
+  assert.equal(restored.view.me.board[safe], 'F');
+  assert.equal(restored.view.me.layout, playing.view.me.layout);
+
+  a2.send({ t: 'surrender' });
+  const won = await b.state((v) => v.phase === 'over');
+  assert.equal(won.view.winner, 'you');
+  assert.equal(won.view.overReason, 'forfeit');
+
+  a2.close();
+  b.close();
+});

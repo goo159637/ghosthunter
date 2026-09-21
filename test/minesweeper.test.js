@@ -312,3 +312,86 @@ test('무작위 판 — 어떤 크기든 지뢰 수가 정확하고 안전지대
     }
   }
 });
+
+/* ───────── 전송용 직렬화 ───────── */
+
+test('encodeBoard — 글자 하나가 칸 하나, 끝나기 전엔 지뢰가 새지 않는다', () => {
+  const game = CORNERS();
+  M.toggleMark(game, 24);
+  M.toggleMark(game, 5);
+  M.toggleMark(game, 5);                        // 물음표
+  M.reveal(game, at(game, 1, 1), 0);
+  const s = M.encodeBoard(game);
+  assert.equal(s.length, 25);
+  assert.equal(s[at(game, 1, 1)], '2');
+  assert.equal(s[24], 'F');
+  assert.equal(s[5], '?');
+  assert.equal(s[0], '.');                      // 지뢰지만 닫힌 칸은 그냥 '.'
+  assert.equal(/[*X!]/.test(s), false);
+
+  M.toggleMark(game, 5);                        // 없음
+  M.toggleMark(game, 5);                        // 틀린 깃발
+  M.reveal(game, 0, 0);                         // 펑
+  const lost = M.encodeBoard(game);
+  assert.equal(lost[0], 'X');
+  assert.equal(lost[4], '*');
+  assert.equal(lost[24], 'F');                  // 맞는 깃발은 그대로
+  assert.equal(lost[5], '!');
+});
+
+test('encodeLayout — 지뢰 배치 문자열', () => {
+  const game = CORNERS();
+  const s = M.encodeLayout(game);
+  assert.equal(s, '*...*' + '.....' + '..*..' + '.....' + '*...*');
+});
+
+test('fromSnapshot — layout 이 있으면 원래 게임과 똑같이 되살아나고 계속 둘 수 있다', () => {
+  for (let seed = 1; seed <= 20; seed++) {
+    const game = M.createGame(M.PRESETS.normal, seeded(seed));
+    M.reveal(game, 100, 1000);
+    M.toggleMark(game, 0);
+    M.toggleMark(game, 1);
+    M.toggleMark(game, 1);
+    const copy = M.fromSnapshot({
+      rows: game.rows, cols: game.cols, mines: game.mines,
+      board: M.encodeBoard(game), layout: M.encodeLayout(game),
+      phase: game.phase, startedAt: game.startedAt, endedAt: game.endedAt,
+    });
+    assert.deepEqual(copy.mine, game.mine);
+    assert.deepEqual(copy.count, game.count);
+    assert.deepEqual(copy.open, game.open);
+    assert.deepEqual(copy.mark, game.mark);
+    assert.equal(copy.opened, game.opened);
+    assert.equal(copy.flags, game.flags);
+    assert.equal(copy.phase, game.phase);
+    assert.equal(copy.startedAt, 1000);
+    // 같은 조작을 하면 같은 결과
+    const safe = copy.open.findIndex((o, i) => !o && !copy.mine[i] && copy.mark[i] === M.Mark.NONE);
+    const a = M.reveal(game, safe, 2000);
+    const b = M.reveal(copy, safe, 2000);
+    assert.deepEqual(a, b);
+    assert.equal(M.encodeBoard(copy), M.encodeBoard(game));
+  }
+});
+
+test('fromSnapshot — layout 없이도(상대 판) 그리기용 정보는 완전히 복원된다', () => {
+  const game = CORNERS();
+  M.toggleMark(game, 24);
+  M.toggleMark(game, 5);
+  M.reveal(game, at(game, 0, 2), 0);
+  M.reveal(game, 0, 0);                         // 펑
+  const snap = { rows: 5, cols: 5, mines: 5, board: M.encodeBoard(game), layout: null, phase: game.phase, startedAt: 0, endedAt: 0 };
+  const copy = M.fromSnapshot(snap);
+  for (let i = 0; i < 25; i++) assert.deepEqual(M.cellView(copy, i), M.cellView(game, i), `칸 ${i}`);
+  assert.equal(copy.opened, game.opened);
+  assert.equal(copy.flags, game.flags);
+  assert.equal(copy.exploded, 0);
+  assert.equal(M.encodeBoard(copy), snap.board);
+});
+
+test('fromSnapshot — 이상한 입력도 터지지 않는다', () => {
+  const copy = M.fromSnapshot({ rows: 5, cols: 5, mines: 3, board: 'zz', layout: '***', phase: 'nope' });
+  assert.equal(copy.phase, M.Phase.PLAYING);
+  assert.equal(copy.opened, 0);
+  assert.equal(copy.mine.filter(Boolean).length, 0);
+});

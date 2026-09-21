@@ -1,20 +1,14 @@
 /**
  * 방 관리 — 코드 발급, 자리 배정, 재접속 유예, 상태 브로드캐스트.
- * 게임 규칙은 건드리지 않는다. 규칙은 shared/engine.js 가 전부 갖고 있다.
+ * 게임 규칙은 건드리지 않는다. 규칙은 shared/ 의 각 상태머신이 전부 갖고 있고,
+ * 방은 어떤 게임이든 같은 인터페이스(createGame / seatPlayer / setPresence / tick / forfeit / status / viewFor)로 다룬다.
  */
 import { randomInt, randomBytes } from 'node:crypto';
-import {
-  Phase,
-  createGame,
-  seatPlayer,
-  setPresence,
-  submitSecret,
-  makeGuess,
-  requestRematch,
-  forfeit,
-  tick,
-  viewFor,
-} from '../shared/engine.js';
+import * as baseball from '../shared/engine.js';
+import * as minesweeper from '../shared/msversus.js';
+
+/** 방 종류 → 규칙 모듈 */
+export const KINDS = { baseball, minesweeper };
 
 // 헷갈리는 글자(0/O, 1/I)를 뺀 알파벳
 const CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -33,12 +27,15 @@ function newCode() {
 }
 
 export class Room {
-  constructor(code, opts) {
+  constructor(code, kind, opts) {
     this.code = code;
-    this.game = createGame(opts);
+    this.kind = kind;
+    this.rules = KINDS[kind];
+    this.game = this.rules.createGame(opts);
     this.sockets = [null, null];
     this.tokens = [null, null];
     this.graceUntil = [null, null];
+    this.acks = [0, 0];   // 각 자리가 보낸 마지막 조작 번호 — 브라우저가 미리 그린 화면과 맞추는 데 쓴다
     this.chat = [];
     this.createdAt = Date.now();
     this.lastActivity = Date.now();
@@ -58,7 +55,7 @@ export class Room {
     if (index === -1) return null;
     const token = randomBytes(12).toString('hex');
     this.tokens[index] = token;
-    seatPlayer(this.game, index, name);
+    this.rules.seatPlayer(this.game, index, name);
     this.touch();
     return { index, token };
   }
@@ -76,7 +73,7 @@ export class Room {
     }
     this.sockets[index] = ws;
     this.graceUntil[index] = null;
-    setPresence(this.game, index, true);
+    this.rules.setPresence(this.game, index, true);
     this.touch();
   }
 
@@ -89,8 +86,8 @@ export class Room {
   detach(index, ws = null) {
     if (ws && this.sockets[index] !== ws) return false;
     this.sockets[index] = null;
-    setPresence(this.game, index, false);
-    const inProgress = this.game.phase === Phase.SETUP || this.game.phase === Phase.PLAYING;
+    this.rules.setPresence(this.game, index, false);
+    const inProgress = this.rules.status(this.game) === 'playing';
     this.graceUntil[index] = inProgress ? Date.now() + RECONNECT_SECONDS * 1000 : null;
     this.touch();
     return true;
@@ -109,7 +106,9 @@ export class Room {
     return {
       t: 'state',
       code: this.code,
-      view: viewFor(this.game, index),
+      game: this.kind,
+      view: this.rules.viewFor(this.game, index),
+      ack: this.acks[index],
       chat: this.chat,
       grace: this.graceUntil[1 - index],
     };
@@ -126,13 +125,13 @@ export class Room {
 
   /** 시간 경과 처리. 바뀐 게 있으면 true. */
   tick(now = Date.now()) {
-    let changed = tick(this.game, now);
+    let changed = this.rules.tick(this.game, now);
     for (let i = 0; i < 2; i++) {
       const until = this.graceUntil[i];
       if (until === null || now < until) continue;
       this.graceUntil[i] = null;
-      if (this.game.phase === Phase.SETUP || this.game.phase === Phase.PLAYING) {
-        forfeit(this.game, i, 'forfeit');
+      if (this.rules.status(this.game) === 'playing') {
+        this.rules.forfeit(this.game, i, 'forfeit');
         changed = true;
       }
     }
@@ -142,8 +141,9 @@ export class Room {
   get abandoned() {
     const bothGone = this.sockets.every((s) => s === null);
     const idleFor = Date.now() - this.lastActivity;
-    if (bothGone && this.game.phase === Phase.OVER) return idleFor > 60_000;
-    if (bothGone && this.game.phase === Phase.LOBBY) return idleFor > 10 * 60_000;
+    const status = this.rules.status(this.game);
+    if (bothGone && status === 'over') return idleFor > 60_000;
+    if (bothGone && status === 'lobby') return idleFor > 10 * 60_000;
     return idleFor > IDLE_MINUTES * 60_000;
   }
 }
@@ -153,7 +153,8 @@ export class RoomStore {
     this.rooms = new Map();
   }
 
-  create(opts) {
+  create(kind, opts) {
+    if (!KINDS[kind]) throw new Error(`unknown room kind: ${kind}`);
     if (this.rooms.size >= MAX_ROOMS) return null;
     let code = newCode();
     let attempts = 0;
@@ -161,7 +162,7 @@ export class RoomStore {
       if (++attempts > 50) return null;
       code = newCode();
     }
-    const room = new Room(code, opts);
+    const room = new Room(code, kind, opts);
     this.rooms.set(code, room);
     return room;
   }
@@ -191,5 +192,3 @@ export class RoomStore {
     return { rooms: this.rooms.size, players };
   }
 }
-
-export const actions = { submitSecret, makeGuess, requestRematch, forfeit };

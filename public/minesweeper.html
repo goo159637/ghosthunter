@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>지뢰찾기</title>
-<meta name="description" content="브라우저에서 바로 하는 클래식 지뢰찾기. 쉬움·보통·어려움·커스텀, 최고 기록 저장.">
+<meta name="description" content="브라우저에서 바로 하는 클래식 지뢰찾기. 혼자 최고 기록에 도전하거나, 방 코드로 친구와 1:1 대전.">
 <meta name="color-scheme" content="dark light">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%92%A3%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/css/style.css">
@@ -13,14 +13,21 @@
 <body>
 <main id="app" class="ms">
 
+  <div class="ms-head">
   <header class="topbar">
     <a href="/" class="ghost back">← 홈</a>
     <h1 class="ms-title"><span aria-hidden="true">💣</span> 지뢰찾기</h1>
     <span id="best" class="chip" hidden></span>
   </header>
 
-  <!-- 설정 -->
-  <section class="panel ms-controls">
+  <!-- 모드 -->
+  <div id="mode" class="seg" role="tablist" aria-label="모드">
+    <button type="button" role="tab" data-mode="solo" aria-selected="true">혼자</button>
+    <button type="button" role="tab" data-mode="versus" aria-selected="false">1:1 대전</button>
+  </div>
+
+  <!-- 판 설정 (혼자 / 방 만들기 공통) -->
+  <section id="controls" class="panel ms-controls">
     <div class="row">
       <label class="field">
         <span>난이도</span>
@@ -48,36 +55,138 @@
       </label>
     </div>
   </section>
+  </div>
 
-  <!-- 판 -->
-  <section class="panel ms-game">
-    <div class="ms-status">
-      <span id="mines-left" class="counter" title="남은 지뢰" aria-label="남은 지뢰">000</span>
-      <button id="face" class="face" type="button" aria-label="새 게임">🙂</button>
-      <span id="clock" class="counter" title="경과 시간" aria-label="경과 시간">000</span>
+  <!-- ─────────── 혼자 ─────────── -->
+  <section id="solo" class="screen">
+    <div id="solo-game" class="panel ms-game">
+      <div class="ms-status">
+        <span id="mines-left" class="counter" title="남은 지뢰" aria-label="남은 지뢰">000</span>
+        <div class="ms-status-mid">
+          <button id="face" class="face" type="button" aria-label="새 게임">🙂</button>
+          <button id="btn-fs" class="face small" type="button" aria-label="전체 화면" title="전체 화면">⛶</button>
+        </div>
+        <span id="clock" class="counter" title="경과 시간" aria-label="경과 시간">000</span>
+      </div>
+
+      <div id="board-wrap" class="board-wrap">
+        <div id="board" class="ms-board" aria-label="지뢰판"></div>
+      </div>
+
+      <div class="ms-tools">
+        <button id="btn-flagmode" class="secondary toggle flag-toggle" type="button" aria-pressed="false">🚩 깃발 모드</button>
+        <label class="check">
+          <input id="opt-question" type="checkbox" class="question-opt">
+          <span>물음표 사용</span>
+        </label>
+      </div>
+      <p id="hint" class="muted"></p>
     </div>
 
-    <div id="board-wrap" class="board-wrap">
-      <div id="board" class="ms-board" role="grid" aria-label="지뢰판"></div>
+    <div id="result" class="panel ms-result" hidden>
+      <div id="result-badge" class="result"></div>
+      <p id="result-detail" class="lead"></p>
+      <p id="result-sub" class="muted"></p>
+      <div class="row center">
+        <button id="btn-again" class="primary" type="button">다시 하기</button>
+      </div>
     </div>
-
-    <div class="ms-tools">
-      <button id="btn-flagmode" class="secondary toggle" type="button" aria-pressed="false">🚩 깃발 모드</button>
-      <label class="check">
-        <input id="opt-question" type="checkbox">
-        <span>물음표 사용</span>
-      </label>
-    </div>
-    <p id="hint" class="muted"></p>
   </section>
 
-  <!-- 결과 -->
-  <section id="result" class="panel ms-result" hidden>
-    <div id="result-badge" class="result"></div>
-    <p id="result-detail" class="lead"></p>
-    <p id="result-sub" class="muted"></p>
-    <div class="row center">
-      <button id="btn-again" class="primary" type="button">다시 하기</button>
+  <!-- ─────────── 1:1 대전 · 홈 ─────────── -->
+  <section id="vs-home" class="screen" hidden>
+    <div class="cards two">
+      <article class="card">
+        <h2>방 만들기</h2>
+        <p class="muted">위에서 고른 판으로 방을 만들고 코드를 친구에게 보내세요. 판은 각자 다르고, 먼저 다 여는 쪽이 이깁니다.</p>
+        <label class="field">
+          <span>닉네임</span>
+          <input id="nickname" type="text" maxlength="16" placeholder="이름을 입력하세요" autocomplete="nickname">
+        </label>
+        <button id="btn-create" class="primary" type="button">방 만들기</button>
+      </article>
+      <article class="card">
+        <h2>코드로 참가</h2>
+        <p class="muted">친구가 알려준 4글자 코드를 입력하세요.</p>
+        <label class="field">
+          <span>방 코드</span>
+          <input id="join-code" class="code-input" type="text" maxlength="4" placeholder="ABCD" autocapitalize="characters" autocomplete="off" spellcheck="false">
+        </label>
+        <button id="btn-join" class="primary" type="button">참가하기</button>
+      </article>
+    </div>
+  </section>
+
+  <!-- ─────────── 1:1 대전 · 대전 화면 ─────────── -->
+  <section id="vs-play" class="screen" hidden>
+    <header class="topbar sub">
+      <button id="btn-leave" class="ghost" type="button">← 나가기</button>
+      <button id="room-code" class="chip code" type="button" hidden title="코드 복사"></button>
+      <span id="conn" class="chip"></span>
+    </header>
+
+    <div id="vs-banner" class="banner">
+      <div class="banner-main">
+        <strong id="vs-title">연결 중…</strong>
+        <span id="vs-sub" class="muted"></span>
+      </div>
+      <div id="vs-count" class="countdown" hidden></div>
+    </div>
+
+    <div id="vs-lobby" class="panel" hidden>
+      <p class="lead">상대를 기다리는 중…</p>
+      <div id="lobby-code" class="big-code"></div>
+      <div class="row center">
+        <button id="btn-copy-code" class="secondary" type="button">코드 복사</button>
+        <button id="btn-copy-link" class="secondary" type="button">초대 링크 복사</button>
+      </div>
+    </div>
+
+    <div id="vs-arena" class="vs-arena" hidden>
+      <section class="vs-side me">
+        <div class="vs-head">
+          <strong id="vs-my-name">나</strong>
+          <span id="vs-my-stats" class="vs-stats"></span>
+        </div>
+        <div class="progress"><i id="vs-my-progress"></i></div>
+        <div class="board-wrap"><div id="vs-my-board" class="ms-board" aria-label="내 판"></div></div>
+        <div class="ms-tools">
+          <button class="secondary toggle flag-toggle" type="button" aria-pressed="false">🚩 깃발 모드</button>
+          <label class="check">
+            <input type="checkbox" class="question-opt">
+            <span>물음표</span>
+          </label>
+          <span id="vs-hint" class="muted"></span>
+        </div>
+      </section>
+      <section class="vs-side opp">
+        <div class="vs-head">
+          <strong id="vs-opp-name">상대</strong>
+          <span id="vs-opp-stats" class="vs-stats"></span>
+        </div>
+        <div class="progress"><i id="vs-opp-progress"></i></div>
+        <div class="board-wrap"><div id="vs-opp-board" class="ms-board" aria-label="상대 판"></div></div>
+        <p id="vs-opp-note" class="muted"></p>
+      </section>
+    </div>
+
+    <div id="vs-result" class="panel ms-result" hidden>
+      <div id="vs-result-badge" class="result"></div>
+      <p id="vs-result-detail" class="lead"></p>
+      <p id="vs-result-sub" class="muted"></p>
+      <div class="row center">
+        <button id="btn-rematch" class="primary" type="button">재대결</button>
+        <button id="btn-vs-home" class="secondary" type="button">나가기</button>
+      </div>
+      <p id="rematch-state" class="muted"></p>
+    </div>
+
+    <div id="vs-chat" class="panel chat" hidden>
+      <ol id="chat-log"></ol>
+      <form id="chat-form" class="row" autocomplete="off">
+        <input id="chat-input" type="text" maxlength="120" placeholder="메시지 보내기">
+        <button class="secondary" type="submit">전송</button>
+      </form>
     </div>
   </section>
 
@@ -89,7 +198,9 @@
       <li><b>PC</b> — 왼쪽 클릭 열기 · 오른쪽 클릭 깃발 · 열린 숫자를 클릭하면 주변 깃발 수가 맞을 때 나머지를 한꺼번에 엽니다.</li>
       <li><b>모바일</b> — 탭 열기 · 길게 눌러 깃발 · <b>깃발 모드</b>를 켜면 탭이 깃발이 됩니다.</li>
       <li><b>키보드</b> — 방향키 이동 · Enter/Space 열기 · F 깃발 · N 새 게임</li>
-      <li>쉬움 / 보통 / 어려움의 최고 기록은 이 브라우저에 저장됩니다.</li>
+      <li><b>1:1 대전</b> — 같은 크기의 <b>서로 다른 판</b>을 동시에 풉니다. 출발 지점은 미리 열려 있고, 먼저 다 여는 쪽이 승리. <b>지뢰를 밟으면 그 자리에서 패배</b>합니다. 상대 판이 실시간으로 보입니다.</li>
+      <li>큰 판은 화면에 맞춰 칸이 작아집니다. ⛶ 버튼으로 전체 화면에 꽉 채울 수 있어요.</li>
+      <li>쉬움 / 보통 / 어려움의 최고 기록(혼자)은 이 브라우저에 저장됩니다.</li>
     </ul>
   </details>
 

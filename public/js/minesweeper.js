@@ -1,26 +1,24 @@
 /**
- * 지뢰찾기 화면.
- * 규칙은 /shared/minesweeper.js 한 곳에만 있다.
- * 여기서는 입력을 받아 그 함수를 부르고, 돌아온 상태를 그리기만 한다.
+ * 지뢰찾기 화면 — 혼자 하기와 1:1 대전.
+ * 규칙은 /shared/minesweeper.js (판) 와 /shared/msversus.js (대전, 서버가 돌린다) 에만 있다.
+ * 판을 그리고 입력을 받는 건 /js/msboard.js 가 하고, 여기서는 둘을 잇기만 한다.
  */
 import * as M from '/shared/minesweeper.js';
+import { createBoard } from '/js/msboard.js';
+import { createOnlineEngine, loadToken } from '/js/net.js';
 
 const $ = (id) => document.getElementById(id);
 const SETTINGS_KEY = 'minesweeper:settings';
 const BEST_KEY = 'minesweeper:best';
-const LONG_PRESS_MS = 350;   // 모바일에서 이만큼 누르고 있으면 깃발
-const CELL_MIN = 24;
-const CELL_MAX = 36;
-const GAP = 2;
+const NAME_KEY = 'baseball:nickname';   // 숫자야구와 닉네임을 같이 쓴다
+const GAME = 'minesweeper';
 
 const coarse = matchMedia('(pointer: coarse)').matches;   // 터치 기기
+const CELL_MIN = coarse ? 18 : 12;
+const CELL_MAX = 36;
 const DIFFICULTY_LABEL = { easy: '쉬움', normal: '보통', hard: '어려움' };
-
-let game = null;
-let cells = [];      // 칸 버튼들 (판 순서대로)
-let painted = [];    // 마지막으로 그린 모습 — 바뀐 칸만 다시 칠하려고
-let clockTimer = null;
-let focusIndex = 0;
+const APP_PAD = 16;      // #app 좌우 여백
+const PANEL_PAD = 16;
 
 let settings = loadSettings();
 let best = loadBest();
@@ -57,14 +55,35 @@ function formatTime(ms) {
   return `${min}분 ${(sec - min * 60).toFixed(1)}초`;
 }
 
+function span(cls, text) {
+  const el = document.createElement('span');
+  el.className = cls;
+  el.textContent = text;
+  return el;
+}
+
+async function copy(text, label) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(`${label}을(를) 복사했어요`);
+  } catch {
+    toast(`복사하지 못했어요 — ${text}`);
+  }
+}
+
+/** 문서 기준 y 좌표 */
+const docTop = (el) => el.getBoundingClientRect().top + window.scrollY;
+const docBottom = (el) => el.getBoundingClientRect().bottom + window.scrollY;
+
 /* ───────── 저장 ───────── */
 
 function loadSettings() {
-  const def = { difficulty: 'normal', rows: 12, cols: 12, mines: 20, question: false, flagMode: false };
+  const def = { mode: 'solo', difficulty: 'normal', rows: 12, cols: 12, mines: 20, question: false, flagMode: false };
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     const out = { ...def, ...saved };
     if (!M.PRESETS[out.difficulty] && out.difficulty !== 'custom') out.difficulty = def.difficulty;
+    if (out.mode !== 'versus') out.mode = 'solo';
     Object.assign(out, M.normalizeOptions({ rows: out.rows, cols: out.cols, mines: out.mines }));
     out.question = Boolean(out.question);
     out.flagMode = Boolean(out.flagMode);
@@ -99,108 +118,86 @@ function saveBest() {
   } catch { /* 저장 못 해도 진행 */ }
 }
 
+function nickname() {
+  const value = $('nickname').value.trim();
+  try {
+    localStorage.setItem(NAME_KEY, value);
+  } catch { /* 저장 못 해도 진행 */ }
+  return value;
+}
+
 function currentOptions() {
   if (settings.difficulty !== 'custom') return M.PRESETS[settings.difficulty];
   return M.normalizeOptions({ rows: settings.rows, cols: settings.cols, mines: settings.mines });
 }
 
-/* ───────── 판 만들기 ───────── */
+/* ───────── 화면 전환 ───────── */
+
+function setMode(mode, { save = true } = {}) {
+  settings.mode = mode;
+  if (save) saveSettings();
+  for (const b of $('mode').querySelectorAll('button')) b.setAttribute('aria-selected', String(b.dataset.mode === mode));
+  showScreen(mode === 'solo' ? 'solo' : engine ? 'vs-play' : 'vs-home');
+}
+
+function showScreen(which) {
+  $('solo').hidden = which !== 'solo';
+  $('vs-home').hidden = which !== 'vs-home';
+  $('vs-play').hidden = which !== 'vs-play';
+  $('controls').hidden = which === 'vs-play';
+  $('btn-new').hidden = which !== 'solo';
+  $('best').hidden = which !== 'solo' || !bestMs();
+  if (which === 'solo') fitSolo();
+  if (which === 'vs-play') fitVersus();
+}
+
+/* ═══════════════════ 혼자 ═══════════════════ */
+
+let game = null;
+let clockTimer = null;
+const soloBoard = createBoard($('board'), {
+  onPrimary: (i) => soloPrimary(i),
+  onSecondary: (i) => soloSecondary(i),
+  onChord: (i) => game && game.open[i] && soloAfter(M.chord(game, i)),
+  onPress: (pressing) => game && renderFace(pressing),
+});
 
 function newGame() {
   stopClock();
   game = M.createGame(currentOptions());
-  buildBoard();
-  focusIndex = 0;
+  soloBoard.setGame(game);
   $('result').hidden = true;
-  render();
+  fitSolo();
+  renderSolo();
 }
 
-function buildBoard() {
-  const board = $('board');
-  board.replaceChildren();
-  board.style.setProperty('--cols', game.cols);
-  cells = [];
-  painted = [];
-  const frag = document.createDocumentFragment();
-  for (let i = 0; i < game.rows * game.cols; i++) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'cell';
-    b.dataset.i = i;
-    b.tabIndex = i === 0 ? 0 : -1;   // roving tabindex — Tab 은 한 번만 멈춘다
-    b.setAttribute('role', 'gridcell');
-    frag.appendChild(b);
-    cells.push(b);
-    painted.push('');
+/**
+ * 판이 화면에 들어가도록 칸 크기를 정한다 — 너비와 높이 둘 다 본다.
+ * 칸이 너무 작아지면 주변 여백을 줄이고(compact), 그래도 안 되면 그때만 스크롤.
+ */
+function fitSolo() {
+  if (!game || $('solo').hidden) return;
+  const app = document.querySelector('.ms');
+  const fs = Boolean(document.fullscreenElement);
+  const measure = () => {
+    const wrap = $('board-wrap');
+    const sidePad = fs ? 8 + 10 : APP_PAD + PANEL_PAD;
+    const width = document.documentElement.clientWidth - sidePad * 2 - 4;
+    const below = docBottom(app) - docBottom(wrap);   // 판 아래에 있는 모든 것 (도구, 규칙, 여백)
+    const height = window.innerHeight - docTop(wrap) - below;
+    return { width, height };
+  };
+  let cell = soloBoard.fit({ ...measure(), minCell: CELL_MIN, maxCell: CELL_MAX });
+  const wantCompact = !fs && cell < 22;
+  if (app.classList.contains('compact') !== wantCompact) {
+    app.classList.toggle('compact', wantCompact);
+    cell = soloBoard.fit({ ...measure(), minCell: CELL_MIN, maxCell: CELL_MAX });
   }
-  board.appendChild(frag);
-  fitCells();
+  return cell;
 }
 
-/** 화면 폭에 맞춰 칸 크기를 정한다. 너무 작아지면 가로 스크롤로 넘긴다. */
-function fitCells() {
-  if (!game) return;
-  const avail = $('board-wrap').clientWidth - 4;
-  const ideal = Math.floor((avail - (game.cols - 1) * GAP) / game.cols);
-  const size = Math.max(CELL_MIN, Math.min(CELL_MAX, ideal));
-  $('board').style.setProperty('--cell', `${size}px`);
-}
-
-/* ───────── 그리기 ───────── */
-
-function paint(el, v, i) {
-  const r = Math.floor(i / game.cols) + 1;
-  const c = (i % game.cols) + 1;
-  let cls = 'cell';
-  let text = '';
-  let label;
-  if (v.exploded) {
-    cls += ' mine boom';
-    text = '💥';
-    label = '터진 지뢰';
-  } else if (v.mine) {
-    cls += ' mine';
-    text = '💣';
-    label = '지뢰';
-  } else if (v.wrongFlag) {
-    cls += ' wrong';
-    text = '🚩';
-    label = '잘못 꽂은 깃발';
-  } else if (v.open) {
-    cls += ' open';
-    if (v.count) {
-      cls += ` n n${v.count}`;
-      text = String(v.count);
-      label = `주변 지뢰 ${v.count}개`;
-    } else {
-      label = '빈 칸';
-    }
-  } else if (v.mark === M.Mark.FLAG) {
-    cls += ' flag';
-    text = '🚩';
-    label = '깃발';
-  } else if (v.mark === M.Mark.QUESTION) {
-    cls += ' q';
-    text = '?';
-    label = '물음표';
-  } else {
-    label = '닫힘';
-  }
-  el.className = cls;
-  el.textContent = text;
-  el.setAttribute('aria-label', `${r}행 ${c}열 ${label}`);
-}
-
-function render() {
-  const over = M.isOver(game);
-  $('board').classList.toggle('over', over);
-  for (let i = 0; i < cells.length; i++) {
-    const v = M.cellView(game, i);
-    const key = `${v.open ? 1 : 0}${v.count}${v.mark}${v.mine ? 1 : 0}${v.exploded ? 1 : 0}${v.wrongFlag ? 1 : 0}`;
-    if (key === painted[i]) continue;
-    painted[i] = key;
-    paint(cells[i], v, i);
-  }
+function renderSolo() {
+  soloBoard.render();
   $('mines-left').textContent = pad3(M.remainingMines(game));
   renderFace();
   renderClock();
@@ -218,12 +215,15 @@ function renderClock() {
   $('clock').textContent = pad3(Math.floor(M.elapsedMs(game) / 1000));
 }
 
+function bestMs() {
+  return settings.difficulty === 'custom' ? null : best[settings.difficulty];
+}
+
 function renderBest() {
   const chip = $('best');
-  const preset = settings.difficulty === 'custom' ? null : settings.difficulty;
-  const ms = preset ? best[preset] : null;
-  chip.hidden = !ms;
-  if (ms) chip.textContent = `🏆 ${DIFFICULTY_LABEL[preset]} 최고 ${formatTime(ms)}`;
+  const ms = bestMs();
+  chip.hidden = !ms || settings.mode !== 'solo';
+  if (ms) chip.textContent = `🏆 ${DIFFICULTY_LABEL[settings.difficulty]} 최고 ${formatTime(ms)}`;
 }
 
 function startClock() {
@@ -236,35 +236,31 @@ function stopClock() {
   clockTimer = null;
 }
 
-/* ───────── 조작 → 규칙 → 그리기 ───────── */
-
-function afterAction(out) {
+function soloAfter(out) {
   if (!out.ok) return;   // 이미 연 칸을 또 누르는 식의 헛손질은 조용히 넘긴다
   if (game.phase === M.Phase.PLAYING && !clockTimer) startClock();
-  render();
-  if (M.isOver(game)) finish();
+  renderSolo();
+  if (M.isOver(game)) finishSolo();
 }
 
-/** 주 조작 — 닫힌 칸은 열고(깃발 모드면 깃발), 열린 숫자는 주변을 한꺼번에 연다. */
-function primary(i) {
-  if (game.open[i]) return afterAction(M.chord(game, i));
-  if (settings.flagMode) return mark(i);
-  afterAction(M.reveal(game, i));
+function soloPrimary(i) {
+  if (game.open[i]) return soloAfter(M.chord(game, i));
+  if (settings.flagMode) return soloMark(i);
+  soloAfter(M.reveal(game, i));
 }
 
-/** 보조 조작 — 깃발. 열린 숫자면 역시 주변 열기. */
-function secondary(i) {
-  if (game.open[i]) return afterAction(M.chord(game, i));
-  mark(i);
+function soloSecondary(i) {
+  if (game.open[i]) return soloAfter(M.chord(game, i));
+  soloMark(i);
 }
 
-function mark(i) {
+function soloMark(i) {
   const out = M.toggleMark(game, i, { question: settings.question });
   if (out.ok) vibrate(15);
-  afterAction(out);
+  soloAfter(out);
 }
 
-function finish() {
+function finishSolo() {
   stopClock();
   const ms = M.elapsedMs(game);
   const badge = $('result-badge');
@@ -299,130 +295,286 @@ function finish() {
   renderBest();
 }
 
-/* ───────── 입력 ───────── */
+/* ═══════════════════ 1:1 대전 ═══════════════════ */
 
-function cellIndexOf(ev) {
-  const el = ev.target.closest?.('.cell');
-  return el ? Number(el.dataset.i) : -1;
-}
+let engine = null;
+let unsubscribe = null;
+let vs = null;          // 서버가 보낸 마지막 payload
+let replica = null;     // 내 판의 복제본 — 클릭 즉시 여기에 적용해 그리고, 서버 확정 상태로 맞춘다
+let replicaGameNo = 0;
+let actionNo = 0;       // 내가 보낸 조작 번호. 서버 ack 가 여기에 닿기 전엔 내 판을 서버 상태로 덮지 않는다
+let skew = 0;           // 서버 시계 - 내 시계
+let vsTimer = null;
+let lastPhase = null;
 
-function moveFocus(i) {
-  if (!M.inBoard(game, i)) return;
-  cells[focusIndex].tabIndex = -1;
-  focusIndex = i;
-  cells[i].tabIndex = 0;
-  cells[i].focus({ preventScroll: false });
-}
+const serverNow = () => Date.now() + skew;
 
-function bindBoard() {
-  const board = $('board');
-  let pressTimer = null;
-  let pressStart = null;
-  let longPressed = false;      // 이번 터치에서 길게 눌러 깃발을 꽂았나
-  let suppressUntil = 0;        // 그 뒤 따라오는 click 을 이 시각까지 무시
-  let lastPointerType = 'mouse';
+const myBoard = createBoard($('vs-my-board'), {
+  onPrimary: (i) => vsPrimary(i),
+  onSecondary: (i) => vsSecondary(i),
+  onChord: (i) => replica && replica.open[i] && vsAct('chord', i),
+});
+const oppBoard = createBoard($('vs-opp-board'));
 
-  const cancelPress = () => {
-    clearTimeout(pressTimer);
-    pressTimer = null;
-    pressStart = null;
-  };
-
-  // 손을 뗀 뒤에만 짧게 막는다. 브라우저가 click 을 아예 안 보내는 경우(안드로이드 크롬)에도
-  // 다음 탭이 삼켜지지 않도록 플래그 대신 시간창을 쓴다.
-  const releasePress = () => {
-    cancelPress();
-    if (longPressed) {
-      longPressed = false;
-      suppressUntil = performance.now() + 400;
+function startVersus(intent) {
+  stopVersus();
+  actionNo = 0;
+  replica = null;
+  engine = createOnlineEngine({ ...intent, game: GAME });
+  engine.onError((err) => {
+    toast(err.message || '문제가 생겼어요.');
+    const fatal = ['room_not_found', 'bad_token', 'room_full', 'wrong_game', 'server_full'].includes(err.code);
+    if (fatal && !vs?.view) {
+      stopVersus();
+      showScreen('vs-home');
     }
-  };
-
-  board.addEventListener('pointerdown', (ev) => {
-    lastPointerType = ev.pointerType;
-    const i = cellIndexOf(ev);
-    if (i < 0 || M.isOver(game)) return;
-    if (ev.button === 0 && !game.open[i]) renderFace(true);
-    if (ev.pointerType !== 'touch') return;
-    cancelPress();
-    longPressed = false;
-    pressStart = { x: ev.clientX, y: ev.clientY };
-    pressTimer = setTimeout(() => {
-      pressTimer = null;
-      longPressed = true;
-      secondary(i);
-    }, LONG_PRESS_MS);
   });
-
-  board.addEventListener('pointermove', (ev) => {
-    if (!pressStart) return;
-    if (Math.hypot(ev.clientX - pressStart.x, ev.clientY - pressStart.y) > 10) cancelPress();
+  unsubscribe = engine.subscribe((payload) => {
+    vs = payload;
+    if (payload.view) {
+      skew = payload.view.now - Date.now();
+      syncBoards(payload);
+    }
+    renderVersus();
   });
+  clearInterval(vsTimer);
+  vsTimer = setInterval(renderVersusLive, 200);
+  showScreen('vs-play');
+}
 
-  for (const type of ['pointerup', 'pointercancel', 'pointerleave']) {
-    board.addEventListener(type, releasePress);
+function stopVersus({ keepUrl = false } = {}) {
+  if (unsubscribe) unsubscribe();
+  if (engine) engine.leave();
+  clearInterval(vsTimer);
+  vsTimer = null;
+  unsubscribe = null;
+  engine = null;
+  vs = null;
+  replica = null;
+  lastPhase = null;
+  if (!keepUrl && location.search) history.replaceState(null, '', location.pathname);
+}
+
+/** 서버 상태로 두 판을 맞춘다. 내 판은 서버가 내 마지막 조작까지 반영했을 때만 덮어쓴다. */
+function syncBoards(payload) {
+  const view = payload.view;
+  const dims = { rows: view.rows, cols: view.cols, mines: view.mines };
+  if (view.me.board) {
+    const caughtUp = payload.ack >= actionNo;
+    if (caughtUp || !replica || replicaGameNo !== view.gameNo) {
+      replica = M.fromSnapshot({ ...dims, ...view.me, phase: view.me.boardPhase });
+      replicaGameNo = view.gameNo;
+      myBoard.setGame(replica);
+      if (!caughtUp) actionNo = payload.ack;   // 새 판이면 번호도 서버에 맞춘다
+    }
+  } else {
+    replica = null;
   }
-  window.addEventListener('pointerup', () => {
-    if (game) renderFace(false);
-  });
-
-  board.addEventListener('click', (ev) => {
-    const i = cellIndexOf(ev);
-    if (i < 0) return;
-    if (performance.now() < suppressUntil) {
-      suppressUntil = 0;
-      return;
-    }
-    moveFocus(i);
-    primary(i);
-  });
-
-  board.addEventListener('contextmenu', (ev) => {
-    ev.preventDefault();
-    const i = cellIndexOf(ev);
-    if (i < 0 || lastPointerType === 'touch') return;   // 터치는 길게 누르기로 처리했다
-    moveFocus(i);
-    secondary(i);
-  });
-
-  board.addEventListener('auxclick', (ev) => {
-    if (ev.button !== 1) return;   // 가운데 버튼 = 주변 열기
-    ev.preventDefault();
-    const i = cellIndexOf(ev);
-    if (i >= 0 && game.open[i]) afterAction(M.chord(game, i));
-  });
-
-  board.addEventListener('focusin', (ev) => {
-    const i = cellIndexOf(ev);
-    if (i >= 0 && i !== focusIndex) {
-      cells[focusIndex].tabIndex = -1;
-      focusIndex = i;
-      cells[i].tabIndex = 0;
-    }
-  });
-
-  board.addEventListener('keydown', (ev) => {
-    const { cols, rows } = game;
-    const r = Math.floor(focusIndex / cols);
-    const c = focusIndex % cols;
-    let next = null;
-    switch (ev.key) {
-      case 'ArrowLeft': next = c > 0 ? focusIndex - 1 : null; break;
-      case 'ArrowRight': next = c < cols - 1 ? focusIndex + 1 : null; break;
-      case 'ArrowUp': next = r > 0 ? focusIndex - cols : null; break;
-      case 'ArrowDown': next = r < rows - 1 ? focusIndex + cols : null; break;
-      case 'Home': next = focusIndex - c; break;
-      case 'End': next = focusIndex - c + cols - 1; break;
-      case 'f': case 'F':
-        ev.preventDefault();
-        secondary(focusIndex);
-        return;
-      default: return;
-    }
-    ev.preventDefault();
-    if (next !== null) moveFocus(next);
-  });
+  if (view.opponent.board) {
+    oppBoard.setGame(M.fromSnapshot({ ...dims, ...view.opponent, phase: view.opponent.boardPhase }));
+  }
+  if (view.phase !== lastPhase) {
+    lastPhase = view.phase;
+    fitVersus();
+    if (view.phase === 'countdown') vibrate(20);
+  }
 }
+
+function canAct() {
+  const view = vs?.view;
+  if (!view || !replica || M.isOver(replica)) return false;
+  if (view.phase === 'playing') return true;
+  return view.phase === 'countdown' && serverNow() >= view.startAt;   // 출발 직후 서버 확정이 오기 전에도 둘 수 있게
+}
+
+function vsAct(a, i) {
+  if (!canAct()) return;
+  const out = a === 'reveal' ? M.reveal(replica, i)
+    : a === 'mark' ? M.toggleMark(replica, i, { question: settings.question })
+      : M.chord(replica, i);
+  if (!out.ok) return;
+  actionNo++;
+  engine.action({ t: 'ms', a, i, n: actionNo, q: settings.question });
+  if (a === 'mark') vibrate(15);
+  myBoard.render();
+  renderVersusLive();
+  if (M.isOver(replica)) renderVersus();   // 서버 확정 전에 결과를 미리 보여 주진 않지만 판은 굳힌다
+}
+
+function vsPrimary(i) {
+  if (!replica) return;
+  if (replica.open[i]) return vsAct('chord', i);
+  if (settings.flagMode) return vsAct('mark', i);
+  vsAct('reveal', i);
+}
+
+function vsSecondary(i) {
+  if (!replica) return;
+  if (replica.open[i]) return vsAct('chord', i);
+  vsAct('mark', i);
+}
+
+/** 두 판을 나란히(넓은 화면) 또는 위아래로(좁은 화면) 화면에 맞춘다. */
+function fitVersus() {
+  if ($('vs-play').hidden || !myBoard.game) return;
+  const wide = window.innerWidth >= 720;
+  const sidePad = 12;
+  const total = document.documentElement.clientWidth - APP_PAD * 2;
+  const width = (wide ? (total - 14) / 2 : total) - sidePad * 2 - 4;
+  const wrap = $('vs-my-board').parentElement;
+  const height = wide ? window.innerHeight - docTop(wrap) - 80 : window.innerHeight * 0.6;
+  myBoard.fit({ width, height, minCell: CELL_MIN, maxCell: CELL_MAX });
+  if (oppBoard.game) {
+    oppBoard.fit({ width, height: wide ? height : Infinity, minCell: 8, maxCell: wide ? CELL_MAX : 22 });
+  }
+}
+
+function connectionChip() {
+  const chip = $('conn');
+  chip.className = 'chip';
+  const status = vs?.status ?? 'connecting';
+  if (status === 'online') {
+    chip.textContent = '온라인';
+    chip.classList.add('on');
+  } else if (status === 'reconnecting') {
+    chip.textContent = '재연결 중…';
+    chip.classList.add('off');
+  } else {
+    chip.textContent = '연결 중…';
+  }
+}
+
+function renderChat(chat, you) {
+  const log = $('chat-log');
+  log.replaceChildren();
+  for (const line of chat) {
+    const li = document.createElement('li');
+    if (line.player === you) li.className = 'me';
+    li.append(span('who', line.name), span('text', line.text));
+    log.append(li);
+  }
+  log.scrollTop = log.scrollHeight;
+}
+
+function vsResultTexts(view) {
+  const name = view.opponent.name;
+  if (view.winner === 'you') {
+    const detail = {
+      clear: '먼저 다 열었어요!',
+      mine: `${name}이(가) 지뢰를 밟았어요.`,
+      forfeit: `${name}이(가) 나가서 승리했습니다.`,
+    };
+    return ['승리 🎉', 'win', detail[view.overReason] ?? '승리했습니다.'];
+  }
+  const detail = {
+    clear: `${name}이(가) 먼저 다 열었어요.`,
+    mine: '지뢰를 밟았어요.',
+    forfeit: '기권했습니다.',
+  };
+  return [view.overReason === 'mine' ? '펑!' : '패배', 'lose', detail[view.overReason] ?? '아쉽네요.'];
+}
+
+/** 시계·카운트다운·진행률처럼 매 순간 바뀌는 것만 (200ms 마다) */
+function renderVersusLive() {
+  const view = vs?.view;
+  if (!view) return;
+  const count = $('vs-count');
+  if (view.phase === 'countdown') {
+    const left = view.startAt - serverNow();
+    count.hidden = false;
+    count.textContent = left > 0 ? String(Math.ceil(left / 1000)) : 'GO!';
+    $('vs-my-board').classList.toggle('waiting', left > 0);
+  } else {
+    count.hidden = true;
+    $('vs-my-board').classList.remove('waiting');
+  }
+  const stat = (p, g) => {
+    if (!g) return '';
+    const secs = Math.floor(M.elapsedMs(g, serverNow()) / 1000);
+    return `${g.opened}/${view.total}칸 · 🚩 ${p.flags ?? g.flags}/${view.mines} · ${pad3(secs)}`;
+  };
+  $('vs-my-stats').textContent = stat(view.me, replica);
+  $('vs-opp-stats').textContent = stat(view.opponent, oppBoard.game);
+  $('vs-my-progress').style.width = replica ? `${(replica.opened / view.total) * 100}%` : '0';
+  $('vs-opp-progress').style.width = oppBoard.game ? `${(oppBoard.game.opened / view.total) * 100}%` : '0';
+}
+
+function renderVersus() {
+  connectionChip();
+  const view = vs?.view;
+  const code = vs?.code;
+
+  $('room-code').hidden = !code;
+  if (code) {
+    $('room-code').textContent = `방 ${code}`;
+    if (new URLSearchParams(location.search).get('room') !== code) history.replaceState(null, '', `?room=${code}`);
+  }
+
+  const title = $('vs-title');
+  const sub = $('vs-sub');
+  if (!view) {
+    title.textContent = vs?.status === 'reconnecting' ? '다시 연결하는 중…' : '연결 중…';
+    sub.textContent = '';
+    $('vs-lobby').hidden = true;
+    $('vs-arena').hidden = true;
+    $('vs-result').hidden = true;
+    $('vs-chat').hidden = true;
+    return;
+  }
+
+  const me = view.me;
+  const opp = view.opponent;
+  $('vs-lobby').hidden = view.phase !== 'lobby';
+  $('vs-arena').hidden = view.phase === 'lobby';
+  $('vs-result').hidden = view.phase !== 'over';
+  $('vs-chat').hidden = false;
+  $('lobby-code').textContent = code ?? '';
+  $('vs-my-name').textContent = `${me.name} (나)`;
+  $('vs-opp-name').textContent = opp.joined ? opp.name : '상대';
+  $('vs-hint').textContent = coarse ? '탭 열기 · 길게 눌러 깃발' : '좌클릭 열기 · 우클릭 깃발';
+
+  const oppSide = document.querySelector('.vs-side.opp');
+  oppSide.classList.toggle('away', opp.joined && !opp.present);
+  oppSide.classList.toggle('finished', opp.boardPhase === 'lost' || opp.boardPhase === 'won');
+  document.querySelector('.vs-side.me').classList.toggle('finished', me.boardPhase === 'lost' || me.boardPhase === 'won');
+  let note = '';
+  if (opp.joined && !opp.present) {
+    const left = vs.grace ? Math.max(0, Math.ceil((vs.grace - serverNow()) / 1000)) : null;
+    note = left === null ? '상대가 나갔어요' : `상대 연결이 끊겼어요 — ${left}초 안에 돌아오지 않으면 기권 처리`;
+  } else if (opp.boardPhase === 'lost') note = '💥 상대가 지뢰를 밟았어요';
+  else if (opp.boardPhase === 'won') note = '😎 상대가 다 열었어요';
+  $('vs-opp-note').textContent = note;
+
+  if (view.phase === 'lobby') {
+    title.textContent = '상대를 기다리는 중…';
+    sub.textContent = '코드나 초대 링크를 보내면 바로 시작돼요.';
+  } else if (view.phase === 'countdown') {
+    title.textContent = `${view.gameNo}번째 판 — 준비!`;
+    sub.textContent = `${view.rows}×${view.cols} · 지뢰 ${view.mines}개 · 출발 지점은 열려 있어요`;
+  } else if (view.phase === 'playing') {
+    title.textContent = '진행 중';
+    sub.textContent = '먼저 다 여는 쪽이 승리 · 지뢰를 밟으면 그 자리에서 패배';
+  } else {
+    const [badge, cls, detail] = vsResultTexts(view);
+    title.textContent = view.winner === 'you' ? '승리!' : '패배';
+    sub.textContent = detail;
+    $('vs-result-badge').textContent = badge;
+    $('vs-result-badge').className = `result ${cls}`;
+    $('vs-result-detail').textContent = detail;
+    const mine = replica ? `${replica.opened}/${view.total}칸` : '';
+    const theirs = oppBoard.game ? `${oppBoard.game.opened}/${view.total}칸` : '';
+    $('vs-result-sub').textContent = replica ? `나 ${mine} · ${opp.name} ${theirs} · ${formatTime(M.elapsedMs(replica, serverNow()))}` : '';
+    $('btn-rematch').disabled = me.rematch || !opp.joined;
+    $('rematch-state').textContent = me.rematch
+      ? '상대의 재대결 수락을 기다리는 중…'
+      : opp.rematch ? `${opp.name}이(가) 재대결을 원해요!` : '';
+  }
+
+  renderChat(vs.chat ?? [], view.you);
+  renderVersusLive();
+}
+
+/* ───────── 입력 묶기 ───────── */
 
 function bindControls() {
   const difficulty = $('difficulty');
@@ -444,7 +596,8 @@ function bindControls() {
     settings.difficulty = difficulty.value;
     custom.hidden = settings.difficulty !== 'custom';
     saveSettings();
-    newGame();
+    if (settings.mode === 'solo') newGame();
+    renderBest();
   });
 
   for (const [key, input] of Object.entries(inputs)) {
@@ -456,6 +609,10 @@ function bindControls() {
     });
   }
 
+  for (const b of $('mode').querySelectorAll('button')) {
+    b.addEventListener('click', () => setMode(b.dataset.mode));
+  }
+
   $('btn-new').addEventListener('click', newGame);
   $('face').addEventListener('click', newGame);
   $('btn-again').addEventListener('click', () => {
@@ -463,31 +620,48 @@ function bindControls() {
     $('board-wrap').scrollIntoView({ block: 'nearest' });
   });
 
-  const flagBtn = $('btn-flagmode');
-  const syncFlagMode = () => flagBtn.setAttribute('aria-pressed', String(settings.flagMode));
+  // 깃발 모드 / 물음표 — 혼자·대전 화면에 하나씩 있는 버튼을 같은 설정에 묶는다
+  const flagButtons = document.querySelectorAll('.flag-toggle');
+  const syncFlagMode = () => flagButtons.forEach((b) => b.setAttribute('aria-pressed', String(settings.flagMode)));
   syncFlagMode();
-  flagBtn.addEventListener('click', () => {
+  flagButtons.forEach((b) => b.addEventListener('click', () => {
     settings.flagMode = !settings.flagMode;
     syncFlagMode();
     saveSettings();
     toast(settings.flagMode ? '깃발 모드 — 탭하면 깃발을 꽂아요' : '깃발 모드 해제');
-  });
-
-  const question = $('opt-question');
-  question.checked = settings.question;
-  question.addEventListener('change', () => {
-    settings.question = question.checked;
-    saveSettings();
+  }));
+  const questionBoxes = document.querySelectorAll('.question-opt');
+  questionBoxes.forEach((box) => {
+    box.checked = settings.question;
+    box.addEventListener('change', () => {
+      settings.question = box.checked;
+      questionBoxes.forEach((o) => { o.checked = box.checked; });
+      saveSettings();
+    });
   });
 
   $('hint').textContent = coarse
     ? '탭 열기 · 길게 눌러 깃발 · 열린 숫자를 탭하면 주변을 한꺼번에 열어요'
     : '왼쪽 클릭 열기 · 오른쪽 클릭 깃발 · 열린 숫자를 클릭하면 주변을 한꺼번에 열어요';
 
-  // 입력창 밖에서 N 을 누르면 새 게임
+  // 전체 화면 — 판만 크게. 지원하지 않는 브라우저(iOS 사파리)에선 버튼을 감춘다
+  const fsBtn = $('btn-fs');
+  if (!document.documentElement.requestFullscreen) fsBtn.hidden = true;
+  fsBtn.addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen().catch(() => toast('전체 화면으로 바꾸지 못했어요'));
+  });
+  document.addEventListener('fullscreenchange', () => {
+    document.querySelector('.ms').classList.toggle('fs', Boolean(document.fullscreenElement));
+    fsBtn.textContent = document.fullscreenElement ? '✕' : '⛶';
+    requestAnimationFrame(fitSolo);
+  });
+
+  // 입력창 밖에서 N 을 누르면 새 게임 (혼자 모드)
   document.addEventListener('keydown', (ev) => {
     if (ev.key !== 'n' && ev.key !== 'N') return;
     if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    if (settings.mode !== 'solo') return;
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     ev.preventDefault();
@@ -497,12 +671,80 @@ function bindControls() {
   let resizeRaf = 0;
   window.addEventListener('resize', () => {
     cancelAnimationFrame(resizeRaf);
-    resizeRaf = requestAnimationFrame(fitCells);
+    resizeRaf = requestAnimationFrame(() => {
+      fitSolo();
+      fitVersus();
+    });
+  });
+}
+
+function bindVersus() {
+  try {
+    $('nickname').value = localStorage.getItem(NAME_KEY) ?? '';
+  } catch { /* 무시 */ }
+
+  $('btn-create').addEventListener('click', () => {
+    startVersus({ type: 'create', name: nickname(), options: currentOptions() });
+  });
+
+  $('btn-join').addEventListener('click', () => {
+    const code = $('join-code').value.trim().toUpperCase();
+    if (code.length !== 4) {
+      toast('방 코드는 4글자예요');
+      return;
+    }
+    startVersus({ type: 'join', name: nickname(), code });
+  });
+  $('join-code').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') $('btn-join').click();
+  });
+
+  const leave = () => {
+    const phase = vs?.view?.phase;
+    const live = phase === 'countdown' || phase === 'playing';
+    if (live && !confirm('지금 나가면 기권 처리됩니다. 나갈까요?')) return;
+    if (live && engine) engine.surrender();
+    stopVersus();
+    showScreen('vs-home');
+  };
+  $('btn-leave').addEventListener('click', leave);
+  $('btn-vs-home').addEventListener('click', leave);
+
+  $('btn-rematch').addEventListener('click', () => engine?.rematch());
+  $('room-code').addEventListener('click', () => vs?.code && copy(vs.code, '방 코드'));
+  $('btn-copy-code').addEventListener('click', () => vs?.code && copy(vs.code, '방 코드'));
+  $('btn-copy-link').addEventListener('click', () => {
+    if (!vs?.code) return;
+    copy(`${location.origin}${location.pathname}?room=${vs.code}`, '초대 링크');
+  });
+
+  $('chat-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = $('chat-input').value.trim();
+    if (!text || !engine) return;
+    engine.chat(text);
+    $('chat-input').value = '';
   });
 }
 
 /* ───────── 시작 ───────── */
 
-bindBoard();
 bindControls();
+bindVersus();
 newGame();
+
+const roomParam = new URLSearchParams(location.search).get('room');
+if (roomParam) {
+  const code = roomParam.toUpperCase().slice(0, 4);
+  $('join-code').value = code;
+  setMode('versus', { save: false });
+  if (loadToken(code, GAME)) {
+    // 새로고침 전에 있던 방 — 토큰이 있으면 그대로 복귀
+    startVersus({ type: 'join', name: nickname(), code });
+  } else {
+    toast(`방 ${code} — 닉네임을 넣고 참가하기를 누르세요`);
+    $('nickname').focus();
+  }
+} else {
+  setMode(settings.mode, { save: false });
+}

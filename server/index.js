@@ -1,5 +1,5 @@
 /**
- * 숫자야구 서버 — 정적 파일 + WebSocket 대전.
+ * 게임 서버 — 정적 파일 + WebSocket 대전 (숫자야구, 지뢰찾기 1:1).
  * 의존성은 ws 하나뿐이다.
  */
 import http from 'node:http';
@@ -7,9 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { MIN_DIGITS, MAX_DIGITS } from '../shared/baseball.js';
-import { normalizeOptions } from '../shared/engine.js';
-import { RoomStore, actions } from './rooms.js';
+import { RoomStore, KINDS } from './rooms.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -52,7 +50,14 @@ const ERROR_TEXT = {
   duplicate_guess: '이미 해 본 숫자예요.',
   not_over: '아직 게임이 끝나지 않았어요.',
   rate_limited: '요청이 너무 빨라요.',
+  wrong_game: '이 코드는 다른 게임의 방이에요.',
+  already_over: '이미 끝난 게임이에요.',
 };
+
+/** 만들기/참가 요청이 어느 게임인지. 안 적으면 숫자야구. */
+function kindOf(msg) {
+  return msg.game === 'minesweeper' ? 'minesweeper' : 'baseball';
+}
 
 function resolveFile(urlPath) {
   let decoded;
@@ -116,14 +121,14 @@ function sendError(ws, code) {
   send(ws, { t: 'error', code, message: ERROR_TEXT[code] || '문제가 생겼어요.' });
 }
 
-/** 초당 메시지 폭주 차단 (5초에 40개). */
+/** 메시지 폭주 차단 (5초에 100개 — 지뢰찾기는 빠르게 연타한다). */
 function allowed(ws) {
   const now = Date.now();
   if (now - ws.windowStart > 5000) {
     ws.windowStart = now;
     ws.windowCount = 0;
   }
-  return ++ws.windowCount <= 40;
+  return ++ws.windowCount <= 100;
 }
 
 function leaveRoom(ws) {
@@ -140,14 +145,21 @@ function enter(ws, room, index, token) {
   ws.room = room;
   ws.seat = index;
   room.attach(index, ws);
-  send(ws, { t: 'joined', code: room.code, you: index, token });
+  send(ws, { t: 'joined', code: room.code, game: room.kind, you: index, token });
   room.broadcast();
+}
+
+/** 방에 들어와 있고, (게임을 밝혔다면) 그 게임의 방일 때만 통과. */
+function roomFor(ws, kind = null) {
+  if (!ws.room) return sendError(ws, 'no_room'), null;
+  if (kind && ws.room.kind !== kind) return sendError(ws, 'wrong_game'), null;
+  return ws.room;
 }
 
 const handlers = {
   create(ws, msg) {
-    const opts = normalizeOptions({ digits: msg.digits, turnSeconds: msg.turnSeconds });
-    const room = store.create(opts);
+    const kind = kindOf(msg);
+    const room = store.create(kind, KINDS[kind].normalizeOptions(msg));
     if (!room) return sendError(ws, 'server_full');
     const seat = room.take(msg.name);
     enter(ws, room, seat.index, seat.token);
@@ -156,6 +168,7 @@ const handlers = {
   join(ws, msg) {
     const room = store.get(msg.code);
     if (!room) return sendError(ws, 'room_not_found');
+    if (msg.game && room.kind !== kindOf(msg)) return sendError(ws, 'wrong_game');
     if (room.full) return sendError(ws, 'room_full');
     const seat = room.take(msg.name);
     if (!seat) return sendError(ws, 'room_full');
@@ -165,26 +178,50 @@ const handlers = {
   rejoin(ws, msg) {
     const room = store.get(msg.code);
     if (!room) return sendError(ws, 'room_not_found');
+    if (msg.game && room.kind !== kindOf(msg)) return sendError(ws, 'wrong_game');
     const index = room.seatForToken(String(msg.token ?? ''));
     if (index === null) return sendError(ws, 'bad_token');
     enter(ws, room, index, room.tokens[index]);
   },
 
+  /* ── 숫자야구 ── */
+
   secret(ws, msg) {
-    if (!ws.room) return sendError(ws, 'no_room');
-    const out = actions.submitSecret(ws.room.game, ws.seat, String(msg.value ?? ''));
+    const room = roomFor(ws, 'baseball');
+    if (!room) return;
+    const out = room.rules.submitSecret(room.game, ws.seat, String(msg.value ?? ''));
     if (!out.ok) return sendError(ws, out.error);
-    ws.room.touch();
-    ws.room.broadcast();
+    room.touch();
+    room.broadcast();
   },
 
   guess(ws, msg) {
-    if (!ws.room) return sendError(ws, 'no_room');
-    const out = actions.makeGuess(ws.room.game, ws.seat, String(msg.value ?? ''));
+    const room = roomFor(ws, 'baseball');
+    if (!room) return;
+    const out = room.rules.makeGuess(room.game, ws.seat, String(msg.value ?? ''));
     if (!out.ok) return sendError(ws, out.error);
-    ws.room.touch();
-    ws.room.broadcast();
+    room.touch();
+    room.broadcast();
   },
+
+  /* ── 지뢰찾기 1:1 ── */
+
+  /**
+   * 내 판 조작: {a:'reveal'|'mark'|'chord', i:칸, n:조작 번호, q:물음표 사용}.
+   * 브라우저는 규칙을 먼저 적용해 그려 놓고 보내므로, 거절돼도 에러 대신
+   * 확정 상태를 내려보내 화면을 맞추기만 한다.
+   */
+  ms(ws, msg) {
+    const room = roomFor(ws, 'minesweeper');
+    if (!room) return;
+    const n = Number(msg.n);
+    if (Number.isFinite(n)) room.acks[ws.seat] = n;
+    room.rules.act(room.game, ws.seat, String(msg.a ?? ''), Number(msg.i), Date.now(), { question: Boolean(msg.q) });
+    room.touch();
+    room.broadcast();
+  },
+
+  /* ── 공통 ── */
 
   chat(ws, msg) {
     if (!ws.room) return sendError(ws, 'no_room');
@@ -192,17 +229,19 @@ const handlers = {
   },
 
   rematch(ws) {
-    if (!ws.room) return sendError(ws, 'no_room');
-    const out = actions.requestRematch(ws.room.game, ws.seat);
+    const room = roomFor(ws);
+    if (!room) return;
+    const out = room.rules.requestRematch(room.game, ws.seat);
     if (!out.ok) return sendError(ws, out.error);
-    ws.room.touch();
-    ws.room.broadcast();
+    room.touch();
+    room.broadcast();
   },
 
   surrender(ws) {
-    if (!ws.room) return sendError(ws, 'no_room');
-    actions.forfeit(ws.room.game, ws.seat, 'forfeit');
-    ws.room.broadcast();
+    const room = roomFor(ws);
+    if (!room) return;
+    room.rules.forfeit(room.game, ws.seat, 'forfeit');
+    room.broadcast();
   },
 
   leave(ws) {
@@ -265,7 +304,7 @@ const heartbeat = setInterval(() => {
 const ticker = setInterval(() => store.tickAll(), 1000);
 
 server.listen(PORT, HOST, () => {
-  console.log(`숫자야구 서버 실행 중 → http://localhost:${PORT} (${MIN_DIGITS}~${MAX_DIGITS}자리)`);
+  console.log(`게임 서버 실행 중 → http://localhost:${PORT} (숫자야구 / , 지뢰찾기 /minesweeper)`);
 });
 
 function shutdown() {
