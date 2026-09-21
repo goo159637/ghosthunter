@@ -1,4 +1,4 @@
-/* 숫자야구 — 모바일 우선, 다크/라이트 모두 지원 */
+/* 종합게임 — 모바일 우선, 다크/라이트 모두 지원. 숫자야구 홈이 기본, 지뢰찾기는 minesweeper.css 가 덧붙인다 */
 :root {
   --bg: #0e1524;
   --surface: #172033;
@@ -61,6 +61,21 @@ p { margin: 0 0 12px; }
 /* ── 홈 ── */
 .hero { text-align: center; padding: 18px 0 10px; }
 .hero p { color: var(--muted); }
+
+.game-nav { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 22px; }
+.game-nav a {
+  text-decoration: none; color: var(--text); font-weight: 600; font-size: .92rem;
+  padding: 8px 16px; border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--line);
+}
+.game-nav a:hover { border-color: var(--accent); }
+
+.game-head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  font-size: 1.25rem; margin: 26px 0 12px; padding-top: 18px; border-top: 1px solid var(--line);
+}
+.game-head small { font-weight: 500; font-size: .85rem; }
+.game-head:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
 
 .cards { display: grid; gap: 14px; margin: 18px 0; }
 @media (min-width: 720px) { .cards { grid-template-columns: repeat(3, 1fr); align-items: start; } }
@@ -127,7 +142,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 
 .card.link {
   flex-direction: row; align-items: center; gap: 14px;
-  margin-top: 14px; text-decoration: none; color: inherit;
+  text-decoration: none; color: inherit;
 }
 .card.link:hover { border-color: var(--accent); }
 .card.link .link-icon { font-size: 1.6rem; }
