@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>숫자야구 · 온라인 대전</title>
+<meta name="description" content="방 코드 하나로 친구와 1:1 숫자야구. 혼자일 땐 AI와 연습.">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%BE%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<main id="app">
+
+  <!-- ─────────── 홈 ─────────── -->
+  <section id="home" class="screen">
+    <header class="hero">
+      <h1><span aria-hidden="true">⚾</span> 숫자야구</h1>
+      <p>서로 다른 숫자를 정해 놓고 번갈아 맞히는 게임.<br>방 코드로 친구와 1:1, 혼자일 땐 AI와.</p>
+    </header>
+
+    <label class="field">
+      <span>닉네임</span>
+      <input id="nickname" type="text" maxlength="16" placeholder="이름을 입력하세요" autocomplete="nickname">
+    </label>
+
+    <div class="cards">
+      <article class="card">
+        <h2>온라인 대전 만들기</h2>
+        <p class="muted">방을 만들고 코드를 친구에게 보내세요.</p>
+        <div class="row">
+          <label class="field">
+            <span>자릿수</span>
+            <select id="create-digits">
+              <option value="3" selected>3자리</option>
+              <option value="4">4자리</option>
+              <option value="5">5자리</option>
+              <option value="6">6자리</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>한 턴 제한시간</span>
+            <select id="create-time">
+              <option value="30">30초</option>
+              <option value="60" selected>60초</option>
+              <option value="120">120초</option>
+              <option value="0">무제한</option>
+            </select>
+          </label>
+        </div>
+        <button id="btn-create" class="primary">방 만들기</button>
+      </article>
+
+      <article class="card">
+        <h2>코드로 참가</h2>
+        <p class="muted">친구가 알려준 4글자 코드를 입력하세요.</p>
+        <label class="field">
+          <span>방 코드</span>
+          <input id="join-code" class="code-input" type="text" maxlength="4" placeholder="ABCD" autocapitalize="characters" autocomplete="off" spellcheck="false">
+        </label>
+        <button id="btn-join" class="primary">참가하기</button>
+      </article>
+
+      <article class="card">
+        <h2>AI 연습</h2>
+        <p class="muted">서버 없이 바로 시작 · 제한시간 없음</p>
+        <div class="row">
+          <label class="field">
+            <span>난이도</span>
+            <select id="ai-difficulty">
+              <option value="easy">쉬움</option>
+              <option value="normal" selected>보통</option>
+              <option value="hard">어려움</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>자릿수</span>
+            <select id="ai-digits">
+              <option value="3" selected>3자리</option>
+              <option value="4">4자리</option>
+              <option value="5">5자리</option>
+              <option value="6">6자리</option>
+            </select>
+          </label>
+        </div>
+        <button id="btn-ai" class="primary">AI와 대결</button>
+      </article>
+    </div>
+
+    <details class="rules">
+      <summary>규칙 보기</summary>
+      <ul>
+        <li>둘 다 <b>서로 다른 숫자</b>로 된 비밀번호를 정합니다. (예: 3자리라면 <code>427</code>)</li>
+        <li>번갈아 상대의 숫자를 추측합니다.</li>
+        <li><b>스트라이크</b> — 숫자와 자리가 모두 맞음 · <b>볼</b> — 숫자는 있는데 자리가 다름 · <b>아웃</b> — 하나도 없음</li>
+        <li>먼저 전부 스트라이크를 만들면 승리. 단, <b>선공이 맞히면 후공에게 마지막 공격권</b>이 한 번 주어지고 후공도 맞히면 무승부입니다.</li>
+        <li>제한시간을 넘기면 그 턴은 날아가고, 연속 3번 놓치면 기권 처리됩니다.</li>
+      </ul>
+    </details>
+  </section>
+
+  <!-- ─────────── 게임 ─────────── -->
+  <section id="play" class="screen" hidden>
+    <header class="topbar">
+      <button id="btn-leave" class="ghost" type="button">← 나가기</button>
+      <button id="room-code" class="chip code" type="button" hidden title="코드 복사"></button>
+      <span id="conn" class="chip"></span>
+    </header>
+
+    <div id="banner" class="banner">
+      <div class="banner-main">
+        <strong id="banner-title">연결 중…</strong>
+        <span id="banner-sub" class="muted"></span>
+      </div>
+      <div id="timer" class="timer" hidden>
+        <span id="timer-text">--</span>
+        <div class="timer-bar"><i id="timer-fill"></i></div>
+      </div>
+    </div>
+
+    <!-- 대기실 -->
+    <div id="panel-lobby" class="panel" hidden>
+      <p class="lead">상대를 기다리는 중…</p>
+      <div id="lobby-code" class="big-code"></div>
+      <div class="row center">
+        <button id="btn-copy-code" class="secondary" type="button">코드 복사</button>
+        <button id="btn-copy-link" class="secondary" type="button">초대 링크 복사</button>
+      </div>
+    </div>
+
+    <!-- 비밀번호 설정 -->
+    <div id="panel-setup" class="panel" hidden>
+      <p class="lead">내 비밀번호를 정하세요</p>
+      <p class="muted" id="setup-hint"></p>
+      <form id="secret-form" class="row center" autocomplete="off">
+        <input id="secret-input" class="num-input" type="text" inputmode="numeric" placeholder="000" autocomplete="off" spellcheck="false">
+        <button id="btn-random" class="secondary" type="button">랜덤</button>
+        <button class="primary" type="submit">확정</button>
+      </form>
+      <p id="setup-state" class="muted"></p>
+    </div>
+
+    <!-- 대전판 -->
+    <div id="panel-board" class="panel" hidden>
+      <div class="board">
+        <section class="side">
+          <h3>내 공격 <span id="my-secret" class="mine"></span></h3>
+          <ol id="my-log" class="log"></ol>
+        </section>
+        <section class="side">
+          <h3 id="opp-title">상대 공격</h3>
+          <ol id="opp-log" class="log"></ol>
+        </section>
+      </div>
+      <form id="guess-form" class="row center" autocomplete="off">
+        <input id="guess-input" class="num-input" type="text" inputmode="numeric" placeholder="000" autocomplete="off" spellcheck="false">
+        <button id="btn-guess" class="primary" type="submit">공격</button>
+      </form>
+      <p id="guess-hint" class="muted"></p>
+    </div>
+
+    <!-- 결과 -->
+    <div id="panel-over" class="panel" hidden>
+      <div id="result-badge" class="result"></div>
+      <p id="result-detail" class="lead"></p>
+      <p id="result-reveal" class="muted"></p>
+      <div class="row center">
+        <button id="btn-rematch" class="primary" type="button">재대결</button>
+        <button id="btn-home" class="secondary" type="button">홈으로</button>
+      </div>
+      <p id="rematch-state" class="muted"></p>
+    </div>
+
+    <!-- 채팅 (온라인 전용) -->
+    <div id="panel-chat" class="panel chat" hidden>
+      <ol id="chat-log"></ol>
+      <form id="chat-form" class="row" autocomplete="off">
+        <input id="chat-input" type="text" maxlength="120" placeholder="메시지 보내기">
+        <button class="secondary" type="submit">전송</button>
+      </form>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" hidden></div>
+</main>
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

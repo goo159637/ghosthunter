@@ -1,0 +1,20 @@
+{
+  "name": "number-baseball",
+  "version": "1.0.0",
+  "private": true,
+  "description": "숫자야구 온라인 대전 — 방 코드로 친구와 1:1, 혼자일 땐 AI와 연습",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "license": "MIT"
+}
