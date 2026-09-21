@@ -7,7 +7,10 @@
   --opened: #111a2c;
   --n1: #5b9dff; --n2: #3ddc84; --n3: #ff6b6b; --n4: #b48cff;
   --n5: #ffb340; --n6: #34d3c6; --n7: #ff7ac8; --n8: #a3b1cc;
-  /* 판이 크면 페이지가 판 폭만큼 넓어진다 (최소 880px, 최대 화면 폭) */
+}
+/* 판이 크면 페이지가 판 폭만큼 넓어진다 (최소 880px, 최대 화면 폭).
+   style.css 의 #app { max-width: 880px } 보다 우선해야 하므로 id 까지 붙인다. */
+#app.ms {
   max-width: 100%;
   width: fit-content;
   min-width: min(880px, 100%);
@@ -179,7 +182,7 @@
 .ms.compact .face { font-size: 1.3rem; padding: 4px 10px; }
 .ms.compact .face.small { font-size: .95rem; padding: 7px 8px; }
 
-.ms.fs { padding: 8px; min-width: 0; width: 100%; max-width: none; }
+#app.ms.fs { padding: 8px; min-width: 0; width: 100%; max-width: none; }
 .ms.fs > .ms-head, .ms.fs .ms-tools,
 .ms.fs #hint, .ms.fs > .rules { display: none !important; }
 .ms.fs #solo-game { margin: 0; padding: 10px; box-shadow: none; }

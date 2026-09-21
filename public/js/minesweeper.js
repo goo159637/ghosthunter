@@ -193,7 +193,16 @@ function fitSolo() {
     app.classList.toggle('compact', wantCompact);
     cell = soloBoard.fit({ ...measure(), minCell: CELL_MIN, maxCell: CELL_MAX });
   }
-  return cell;
+  return ensureNoScroll(soloBoard, $('board-wrap'), measure().height);
+}
+
+/**
+ * 마지막 안전장치 — 계산과 실제 배치가 어긋나 판이 자기 상자에서 넘치면
+ * 상자의 실제 폭에 맞춰 한 번 더 줄인다. (가로 스크롤은 절대 안 생기게)
+ */
+function ensureNoScroll(board, wrap, height = Infinity) {
+  if (wrap.scrollWidth <= wrap.clientWidth) return board.cellSize;
+  return board.fit({ width: wrap.clientWidth - 4, height, minCell: 8, maxCell: CELL_MAX });
 }
 
 function renderSolo() {
@@ -424,8 +433,11 @@ function fitVersus() {
   const wrap = $('vs-my-board').parentElement;
   const height = wide ? window.innerHeight - docTop(wrap) - 80 : window.innerHeight * 0.6;
   myBoard.fit({ width, height, minCell: CELL_MIN, maxCell: CELL_MAX });
+  ensureNoScroll(myBoard, wrap, height);
   if (oppBoard.game) {
-    oppBoard.fit({ width, height: wide ? height : Infinity, minCell: 8, maxCell: wide ? CELL_MAX : 22 });
+    const oppHeight = wide ? height : Infinity;
+    oppBoard.fit({ width, height: oppHeight, minCell: 8, maxCell: wide ? CELL_MAX : 22 });
+    ensureNoScroll(oppBoard, $('vs-opp-board').parentElement, oppHeight);
   }
 }
 
