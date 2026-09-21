@@ -18,6 +18,7 @@ export const Phase = {
 
 export const DEFAULT_COUNTDOWN_SECONDS = 3;
 export const MAX_COUNTDOWN_SECONDS = 10;
+const HISTORY_LIMIT = 30;   // 방 안에서 이어 한 판들의 기록
 
 function fail(error) {
   return { ok: false, error };
@@ -47,6 +48,8 @@ export function createGame(opts = {}, rand = Math.random) {
     winner: null,         // 0 | 1
     overReason: null,     // 'clear' | 'mine' | 'forfeit'
     gameNo: 1,
+    score: [0, 0],        // 이 방에서 이긴 판 수 — 재대결을 해도 이어진다
+    history: [],          // 끝난 판들: { gameNo, winner, reason, opened:[..], ms }
     players: [mkPlayer(), mkPlayer()],
     rand,
   };
@@ -85,6 +88,15 @@ function finish(match, winner, reason, now) {
   for (const p of match.players) {
     if (p.game && p.game.endedAt === null) p.game.endedAt = now;
   }
+  match.score[winner]++;
+  match.history.push({
+    gameNo: match.gameNo,
+    winner,
+    reason,
+    opened: match.players.map((p) => p.game.opened),
+    ms: Math.max(0, now - match.startAt),   // 카운트다운 중 기권이면 0
+  });
+  if (match.history.length > HISTORY_LIMIT) match.history.shift();
 }
 
 /** 자리에 앉는다. 둘 다 앉으면 바로 카운트다운. */
@@ -182,6 +194,15 @@ export function viewFor(match, index, now = Date.now()) {
     gameNo: match.gameNo,
     winner: match.winner === null ? null : match.winner === index ? 'you' : 'opponent',
     overReason: match.overReason,
+    score: { you: match.score[index], opponent: match.score[1 - index] },
+    history: match.history.map((h) => ({
+      gameNo: h.gameNo,
+      winner: h.winner === index ? 'you' : 'opponent',
+      reason: h.reason,
+      myOpened: h.opened[index],
+      oppOpened: h.opened[1 - index],
+      ms: h.ms,
+    })),
     me: { name: me.name, present: me.present, rematch: me.rematch, ...snapshot(me, { own: true }) },
     opponent: {
       name: other.name,

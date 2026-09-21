@@ -271,6 +271,11 @@ test('지뢰찾기 방 — 카운트다운 뒤 출발, 조작이 상대에게 �
   assert.equal(overB.view.winner, 'you');
   assert.equal(overB.view.opponent.board[mine], 'X');
   assert.equal(overB.view.opponent.boardPhase, 'lost');
+  assert.deepEqual(overB.view.score, { you: 1, opponent: 0 });
+  assert.deepEqual(overA.view.score, { you: 0, opponent: 1 });
+  assert.equal(overB.view.history.length, 1);
+  assert.equal(overB.view.history[0].winner, 'you');
+  assert.equal(overB.view.history[0].reason, 'mine');
 
   // 재대결 → 새 판, 새 카운트다운
   a.send({ t: 'rematch' });
@@ -278,6 +283,7 @@ test('지뢰찾기 방 — 카운트다운 뒤 출발, 조작이 상대에게 �
   const again = await a.state((v) => v.gameNo === 2);
   assert.notEqual(again.view.phase, 'over');
   assert.notEqual(again.view.me.layout, viewA.me.layout);
+  assert.deepEqual(again.view.score, { you: 0, opponent: 1 }, '재대결해도 스코어는 이어진다');
 
   a.close();
   b.close();

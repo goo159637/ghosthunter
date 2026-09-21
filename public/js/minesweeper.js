@@ -468,6 +468,40 @@ function renderChat(chat, you) {
   log.scrollTop = log.scrollHeight;
 }
 
+const REASON_LABEL = { clear: '다 열기', mine: '지뢰', forfeit: '기권' };
+
+/** 배너의 스코어보드 — 이 방에서 이긴 판 수. 상대가 들어온 뒤부터 보인다. */
+function renderScore(view) {
+  const box = $('vs-score');
+  box.hidden = !view.opponent.joined;
+  if (box.hidden) return;
+  const { you, opponent } = view.score;
+  $('vs-score-me').textContent = you;
+  $('vs-score-opp').textContent = opponent;
+  $('vs-score-me-name').textContent = view.me.name;
+  $('vs-score-opp-name').textContent = view.opponent.name;
+  box.classList.toggle('lead', you > opponent);
+  box.classList.toggle('behind', you < opponent);
+}
+
+/** 결과 화면의 판별 기록 (최근 것이 위). */
+function renderHistory(view) {
+  const list = $('vs-history');
+  list.replaceChildren();
+  list.hidden = view.history.length === 0;
+  for (const h of [...view.history].reverse().slice(0, 8)) {
+    const li = document.createElement('li');
+    li.className = h.winner === 'you' ? 'win' : 'lose';
+    const who = h.winner === 'you' ? `${view.me.name} 승` : `${view.opponent.name} 승`;
+    li.append(
+      span('no', `${h.gameNo}판`),
+      span('who', who),
+      span('why', `${REASON_LABEL[h.reason] ?? h.reason} · ${h.myOpened}:${h.oppOpened}칸 · ${formatTime(h.ms)}`),
+    );
+    list.append(li);
+  }
+}
+
 function vsResultTexts(view) {
   const name = view.opponent.name;
   if (view.winner === 'you') {
@@ -531,6 +565,7 @@ function renderVersus() {
     $('vs-arena').hidden = true;
     $('vs-result').hidden = true;
     $('vs-chat').hidden = true;
+    $('vs-score').hidden = true;
     return;
   }
 
@@ -543,6 +578,7 @@ function renderVersus() {
   $('lobby-code').textContent = code ?? '';
   $('vs-my-name').textContent = `${me.name} (나)`;
   $('vs-opp-name').textContent = opp.joined ? opp.name : '상대';
+  renderScore(view);
   $('vs-hint').textContent = coarse ? '탭 열기 · 길게 눌러 깃발' : '좌클릭 열기 · 우클릭 깃발';
 
   const oppSide = document.querySelector('.vs-side.opp');
@@ -570,12 +606,13 @@ function renderVersus() {
     const [badge, cls, detail] = vsResultTexts(view);
     title.textContent = view.winner === 'you' ? '승리!' : '패배';
     sub.textContent = detail;
-    $('vs-result-badge').textContent = badge;
+    $('vs-result-badge').textContent = `${badge} · ${view.score.you} : ${view.score.opponent}`;
     $('vs-result-badge').className = `result ${cls}`;
     $('vs-result-detail').textContent = detail;
     const mine = replica ? `${replica.opened}/${view.total}칸` : '';
     const theirs = oppBoard.game ? `${oppBoard.game.opened}/${view.total}칸` : '';
     $('vs-result-sub').textContent = replica ? `나 ${mine} · ${opp.name} ${theirs} · ${formatTime(M.elapsedMs(replica, serverNow()))}` : '';
+    renderHistory(view);
     $('btn-rematch').disabled = me.rematch || !opp.joined;
     $('rematch-state').textContent = me.rematch
       ? '상대의 재대결 수락을 기다리는 중…'

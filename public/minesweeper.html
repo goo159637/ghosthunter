@@ -130,6 +130,13 @@
         <strong id="vs-title">연결 중…</strong>
         <span id="vs-sub" class="muted"></span>
       </div>
+      <div id="vs-score" class="scoreboard" hidden aria-label="스코어">
+        <span id="vs-score-me-name" class="name me"></span>
+        <b id="vs-score-me">0</b>
+        <i>:</i>
+        <b id="vs-score-opp">0</b>
+        <span id="vs-score-opp-name" class="name"></span>
+      </div>
       <div id="vs-count" class="countdown" hidden></div>
     </div>
 
@@ -179,6 +186,7 @@
         <button id="btn-vs-home" class="secondary" type="button">나가기</button>
       </div>
       <p id="rematch-state" class="muted"></p>
+      <ol id="vs-history" class="history" hidden></ol>
     </div>
 
     <div id="vs-chat" class="panel chat" hidden>

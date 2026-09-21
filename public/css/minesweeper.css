@@ -193,6 +193,37 @@
 }
 
 /* ── 1:1 대전 ── */
+.scoreboard {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 14px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  white-space: nowrap;
+}
+.scoreboard b { font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+.scoreboard i { color: var(--muted); font-style: normal; font-weight: 700; }
+.scoreboard .name { font-size: .82rem; color: var(--muted); max-width: 7em; overflow: hidden; text-overflow: ellipsis; }
+.scoreboard .name.me { color: var(--accent); font-weight: 700; }
+.scoreboard.lead b:first-of-type { color: var(--accent); }
+.scoreboard.behind b:last-of-type { color: var(--warn); }
+.banner { flex-wrap: wrap; }
+@media (max-width: 480px) {
+  .scoreboard { padding: 4px 10px; gap: 6px; }
+  .scoreboard b { font-size: 1.2rem; }
+  .scoreboard .name { display: none; }   /* 좁으면 숫자만 */
+}
+.ms-result .history {
+  list-style: none; margin: 14px auto 0; padding: 0;
+  max-width: 420px; text-align: left; font-size: .88rem;
+}
+.ms-result .history li {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: 8px; background: var(--surface-2); margin-bottom: 4px;
+}
+.ms-result .history .no { color: var(--muted); min-width: 2.4em; font-variant-numeric: tabular-nums; }
+.ms-result .history .who { font-weight: 700; }
+.ms-result .history li.win .who { color: var(--accent); }
+.ms-result .history li.lose .who { color: var(--danger); }
+.ms-result .history .why { color: var(--muted); margin-left: auto; white-space: nowrap; }
 .banner .countdown {
   font-size: 2.4rem; font-weight: 800; color: var(--accent);
   font-variant-numeric: tabular-nums; min-width: 2.2em; text-align: center;

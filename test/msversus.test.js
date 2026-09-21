@@ -188,6 +188,39 @@ test('viewFor — 내 판의 지뢰 배치는 나에게만, 상대 판은 열린
   assert.equal(V.viewFor(match, 1, 6000).winner, 'opponent');
 });
 
+test('스코어 — 이긴 판 수가 쌓이고 재대결해도 이어지며, 판별 기록이 남는다', () => {
+  const match = ready({ countdownSeconds: 0 });
+  assert.deepEqual(match.score, [0, 0]);
+  V.act(match, 1, 'reveal', mineCell(match, 1), 9000);        // 나가 지뢰 → 가 승
+  assert.deepEqual(match.score, [1, 0]);
+  assert.equal(match.history.length, 1);
+  assert.equal(match.history[0].gameNo, 1);
+  assert.equal(match.history[0].winner, 0);
+  assert.equal(match.history[0].reason, 'mine');
+  assert.equal(match.history[0].ms, 8000);                     // 출발(1000) 뒤 8초
+  assert.deepEqual(match.history[0].opened, match.players.map((p) => p.game.opened));
+
+  V.requestRematch(match, 0, 10000);
+  V.requestRematch(match, 1, 10000);
+  assert.deepEqual(match.score, [1, 0], '재대결해도 스코어는 유지');
+  V.forfeit(match, 0, 'forfeit', 10500);                        // 가 기권 → 나 승
+  assert.deepEqual(match.score, [1, 1]);
+  assert.equal(match.history.length, 2);
+  assert.equal(match.history[1].gameNo, 2);
+  assert.equal(match.history[1].reason, 'forfeit');
+
+  const v1 = V.viewFor(match, 1, 11000);
+  assert.deepEqual(v1.score, { you: 1, opponent: 1 });
+  assert.equal(v1.history.length, 2);
+  assert.equal(v1.history[0].winner, 'opponent');
+  assert.equal(v1.history[1].winner, 'you');
+  assert.equal(v1.history[0].myOpened, match.history[0].opened[1]);
+  assert.equal(v1.history[0].oppOpened, match.history[0].opened[0]);
+  const v0 = V.viewFor(match, 0, 11000);
+  assert.deepEqual(v0.score, { you: 1, opponent: 1 });
+  assert.equal(v0.history[0].winner, 'you');
+});
+
 test('viewFor — 판이 없을 때(대기 중)도 안전하다', () => {
   const match = V.createGame({}, seeded(1));
   V.seatPlayer(match, 0, '가', 0);
@@ -195,4 +228,6 @@ test('viewFor — 판이 없을 때(대기 중)도 안전하다', () => {
   assert.equal(v.phase, 'lobby');
   assert.equal(v.me.board, undefined);
   assert.equal(v.opponent.joined, false);
+  assert.deepEqual(v.score, { you: 0, opponent: 0 });
+  assert.deepEqual(v.history, []);
 });
