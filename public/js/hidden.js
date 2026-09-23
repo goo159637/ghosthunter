@@ -242,6 +242,7 @@ function showHint(t) {
 }
 
 function onPictureClick(e) {
+  if (drag.consumeMoved()) return; // 끌어서 옮긴 뒤 놓은 것은 찍은 게 아니다
   if (EDIT) { editor.click(e); return; }
   if (!game || H.isOver(game)) return;
   const { x, y } = toImage(e);
@@ -308,6 +309,7 @@ function toggleZoom() {
   zoomed = !zoomed;
   $('btn-zoom').setAttribute('aria-pressed', String(zoomed));
   const wrap = $('pic-wrap');
+  wrap.classList.toggle('zoomed', zoomed);
   const cx = wrap.scrollLeft + wrap.clientWidth / 2;
   const cy = wrap.scrollTop + wrap.clientHeight / 2;
   const before = $('pic').clientWidth;
@@ -316,6 +318,43 @@ function toggleZoom() {
   wrap.scrollLeft = cx * k - wrap.clientWidth / 2;
   wrap.scrollTop = cy * k - wrap.clientHeight / 2;
 }
+
+/* ───────── 끌어서 옮기기 (마우스·펜) ─────────
+ * 터치는 브라우저가 알아서 스크롤한다(touch-action). 마우스는 직접: 누른 채 움직이면 스크롤(스크롤이 막히면 그 축은 그대로),
+ * 몇 px 이상 움직였으면 놓을 때의 click 은 무시한다. */
+const drag = {
+  active: false, moved: false, id: null, x0: 0, y0: 0, sl: 0, st: 0,
+  THRESHOLD: 6,
+  bind(wrap) {
+    wrap.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch' || e.button !== 0) return;
+      // 끌 곳이 없어도(확대 전) 움직임은 재서, 끌기 동작이 오답 클릭으로 잡히지 않게 한다
+      this.active = true; this.moved = false; this.id = e.pointerId;
+      this.x0 = e.clientX; this.y0 = e.clientY; this.sl = wrap.scrollLeft; this.st = wrap.scrollTop;
+    });
+    wrap.addEventListener('pointermove', (e) => {
+      if (!this.active || e.pointerId !== this.id) return;
+      const dx = e.clientX - this.x0;
+      const dy = e.clientY - this.y0;
+      if (!this.moved && Math.hypot(dx, dy) < this.THRESHOLD) return;
+      if (!this.moved) { this.moved = true; wrap.classList.add('dragging'); try { wrap.setPointerCapture(this.id); } catch { /* 지원 안 하면 그냥 */ } }
+      wrap.scrollLeft = this.sl - dx;
+      wrap.scrollTop = this.st - dy;
+      e.preventDefault();
+    });
+    const end = (e) => {
+      if (!this.active || e.pointerId !== this.id) return;
+      this.active = false;
+      wrap.classList.remove('dragging');
+      try { wrap.releasePointerCapture(this.id); } catch { /* 이미 풀렸음 */ }
+      // moved 는 곧 오는 click 이 consumeMoved() 로 읽고 지운다. 안 오면 다음 누름에서 초기화.
+    };
+    wrap.addEventListener('pointerup', end);
+    wrap.addEventListener('pointercancel', end);
+    wrap.addEventListener('lostpointercapture', end);
+  },
+  consumeMoved() { const m = this.moved; this.moved = false; return m; },
+};
 
 /* ───────── 편집기 ───────── */
 
@@ -452,6 +491,7 @@ async function main() {
     renderStatus();
   });
   $('pic').addEventListener('click', onPictureClick);
+  drag.bind($('pic-wrap'));
   window.addEventListener('resize', fit);
 
   if (EDIT) {
