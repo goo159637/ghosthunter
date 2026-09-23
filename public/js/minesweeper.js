@@ -7,6 +7,7 @@ import * as M from '/shared/minesweeper.js';
 import { scoreOfGame } from '/shared/msversus.js';
 import { createBoard } from '/js/msboard.js';
 import { createOnlineEngine, loadToken } from '/js/net.js';
+import { createVersusChrome, bindVersusChrome } from '/js/vsui.js';
 
 const $ = (id) => document.getElementById(id);
 const SETTINGS_KEY = 'minesweeper:settings';
@@ -335,6 +336,7 @@ const leftBoard = createBoard($('vs-my-board'), {
   onChord: (i) => replica && replica.open[i] && vsAct('chord', i),
 });
 const rightBoard = createBoard($('vs-opp-board'));
+const chrome = createVersusChrome({ $, span, engine: () => engine, state: () => vs, isPlayer, seatL, seatR });
 
 function startVersus(intent) {
   stopVersus();
@@ -478,51 +480,8 @@ function fitVersus() {
   }
 }
 
-function connectionChip() {
-  const chip = $('conn');
-  chip.className = 'chip';
-  const status = vs?.status ?? 'connecting';
-  if (status === 'online') {
-    chip.textContent = isPlayer() ? '온라인' : '👀 관전';
-    chip.classList.add('on');
-  } else if (status === 'reconnecting') {
-    chip.textContent = '재연결 중…';
-    chip.classList.add('off');
-  } else {
-    chip.textContent = '연결 중…';
-  }
-}
-
-function renderChat(chat) {
-  const log = $('chat-log');
-  log.replaceChildren();
-  const myPid = isPlayer() ? seatL()?.pid : vs?.pid;
-  for (const line of chat) {
-    const li = document.createElement('li');
-    if (line.pid && line.pid === myPid) li.className = 'me';
-    li.append(span('who', line.player === null ? `👀 ${line.name}` : line.name), span('text', line.text));
-    log.append(li);
-  }
-  log.scrollTop = log.scrollHeight;
-}
-
 const OUTCOME_LABEL = { clear: '다 열기', mine: '지뢰', stopped: '중단' };
 const REASON_LABEL = { points: '점수', forfeit: '기권' };
-
-/** 배너의 스코어보드 — 이 방에서 이긴 판 수. 두 자리가 다 찼을 때만. */
-function renderScore(view) {
-  const box = $('vs-score');
-  const L = seatL(view);
-  const R = seatR(view);
-  box.hidden = !(L?.joined && R?.joined);
-  if (box.hidden) return;
-  $('vs-score-me').textContent = L.wins;
-  $('vs-score-opp').textContent = R.wins;
-  $('vs-score-me-name').textContent = L.name;
-  $('vs-score-opp-name').textContent = R.name;
-  box.classList.toggle('lead', L.wins > R.wins);
-  box.classList.toggle('behind', L.wins < R.wins);
-}
 
 /** 결과 화면의 판별 기록 (최근 것이 위). 왼쪽 자리 기준으로 점수를 적는다. */
 function renderHistory(view) {
@@ -635,80 +594,8 @@ function renderVersusLive() {
   $('vs-opp-progress').style.width = rg ? `${(rg.opened / view.total) * 100}%` : '0';
 }
 
-/** 관전자 조작 패널: 빈 자리에 앉기 / 교대 요청·취소 */
-function renderSpectatorBar(view) {
-  const box = $('vs-spec');
-  box.hidden = isPlayer();
-  if (box.hidden) return;
-  const actions = $('vs-spec-actions');
-  actions.replaceChildren();
-  const note = $('vs-spec-note');
-  if (vs.freeSeat !== null) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'primary';
-    b.textContent = '🪑 빈 자리에 앉기';
-    b.addEventListener('click', () => engine?.sit());
-    actions.append(b);
-    note.textContent = '앉으면 바로 다음 판이 시작돼요.';
-  } else {
-    view.seats.forEach((seat, i) => {
-      if (!seat.joined) return;
-      const b = document.createElement('button');
-      b.type = 'button';
-      const mine = vs.mySwap === i;
-      b.className = mine ? 'primary' : 'secondary';
-      b.textContent = mine ? `${seat.name}와 교대 요청 중 · 취소` : `🔁 ${seat.name}와 교대 요청`;
-      b.addEventListener('click', () => engine?.swap(mine ? null : i));
-      actions.append(b);
-    });
-    note.textContent = vs.mySwap !== null
-      ? '상대가 수락하면 자리를 바꿔요. 판이 진행 중이면 끝난 뒤에 바꿀 수 있어요.'
-      : '자리가 다 찼어요. 플레이어에게 교대를 요청할 수 있어요.';
-  }
-}
-
-/** 플레이어에게 들어온 교대 요청 */
-function renderSwapRequests(view) {
-  const box = $('vs-swaps');
-  const swaps = isPlayer() ? vs.swaps ?? [] : [];
-  box.hidden = swaps.length === 0;
-  box.replaceChildren();
-  if (box.hidden) return;
-  const busy = view.phase === 'countdown' || view.phase === 'playing';
-  for (const req of swaps) {
-    const row = document.createElement('div');
-    row.className = 'req';
-    row.append(span('lead', `🔁 ${req.name}님이 내 자리와 교대를 요청했어요`));
-    const ok = document.createElement('button');
-    ok.type = 'button';
-    ok.className = 'primary';
-    ok.textContent = '수락';
-    ok.disabled = busy;
-    ok.addEventListener('click', () => engine?.swapAccept(req.pid));
-    const no = document.createElement('button');
-    no.type = 'button';
-    no.className = 'secondary';
-    no.textContent = '거절';
-    no.addEventListener('click', () => engine?.swapDecline(req.pid));
-    row.append(ok, no);
-    if (busy) row.append(span('muted', '판이 끝난 뒤에 수락할 수 있어요.'));
-    box.append(row);
-  }
-}
-
-function renderPeople() {
-  const el = $('vs-people');
-  const people = vs?.people;
-  el.hidden = !people;
-  if (!people) return;
-  const specs = people.spectators;
-  const names = specs.map((s) => (s.present ? s.name : `${s.name}(끊김)`)).join(', ');
-  el.textContent = specs.length ? `👀 관전 ${specs.length}명 — ${names}` : '👀 관전자 없음';
-}
-
 function renderVersus() {
-  connectionChip();
+  chrome.connectionChip();
   const view = vs?.view;
   const code = vs?.code;
 
@@ -737,16 +624,15 @@ function renderVersus() {
   $('vs-result').hidden = view.phase !== 'over';
   $('vs-chat').hidden = false;
   $('vs-tools').hidden = !me;
-  $('btn-rematch').hidden = !me;
-  document.querySelectorAll('.stand-btn').forEach((b) => { b.hidden = !me; });
+  chrome.toggleRoleUi(me);
   $('lobby-code').textContent = code ?? '';
   $('vs-my-name').textContent = L?.joined ? (me ? `${L.name} (나)` : L.name) : '빈 자리';
   $('vs-opp-name').textContent = R?.joined ? R.name : '빈 자리';
   $('vs-hint').textContent = coarse ? '탭 열기 · 길게 눌러 깃발' : '좌클릭 열기 · 우클릭 깃발';
-  renderScore(view);
-  renderPeople();
-  renderSpectatorBar(view);
-  renderSwapRequests(view);
+  chrome.renderScore(view);
+  chrome.renderPeople();
+  chrome.renderSpectatorBar(view);
+  chrome.renderSwapRequests(view);
 
   const finished = (seat) => seat?.boardPhase === 'lost' || seat?.boardPhase === 'won';
   const sideL = document.querySelector('.vs-side.me');
@@ -799,7 +685,7 @@ function renderVersus() {
     renderHistory(view);
   }
 
-  renderChat(vs.chat ?? []);
+  chrome.renderChat(vs.chat ?? []);
   renderVersusLive();
 }
 
@@ -935,43 +821,18 @@ function bindVersus() {
     if (e.key === 'Enter') $('btn-join').click();
   });
 
-  const live = () => {
-    const phase = vs?.view?.phase;
-    return isPlayer() && (phase === 'countdown' || phase === 'playing');
-  };
-  const leave = () => {
-    if (live() && !confirm('지금 나가면 기권 처리됩니다. 나갈까요?')) return;
-    if (live() && engine) engine.surrender();
-    stopVersus();
-    showScreen('vs-home');
-  };
-  $('btn-leave').addEventListener('click', leave);
-  $('btn-vs-home').addEventListener('click', leave);
-
-  // 관전으로 빠지기 — 진행 중이면 기권부터
-  document.querySelectorAll('.stand-btn').forEach((b) => b.addEventListener('click', () => {
-    if (!engine || !isPlayer()) return;
-    if (live()) {
-      if (!confirm('지금 빠지면 기권 처리됩니다. 관전으로 빠질까요?')) return;
-      engine.surrender();
-    }
-    engine.stand();
-  }));
-
-  $('btn-rematch').addEventListener('click', () => engine?.rematch());
-  $('room-code').addEventListener('click', () => vs?.code && copy(vs.code, '방 코드'));
-  $('btn-copy-code').addEventListener('click', () => vs?.code && copy(vs.code, '방 코드'));
-  $('btn-copy-link').addEventListener('click', () => {
-    if (!vs?.code) return;
-    copy(`${location.origin}${location.pathname}?room=${vs.code}`, '초대 링크');
-  });
-
-  $('chat-form').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const text = $('chat-input').value.trim();
-    if (!text || !engine) return;
-    engine.chat(text);
-    $('chat-input').value = '';
+  bindVersusChrome({
+    $,
+    engine: () => engine,
+    state: () => vs,
+    isPlayer,
+    isLive: () => isPlayer() && (vs?.view?.phase === 'countdown' || vs?.view?.phase === 'playing'),
+    onLeave: () => {
+      stopVersus();
+      showScreen('vs-home');
+    },
+    copy,
+    toast,
   });
 }
 

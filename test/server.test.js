@@ -68,6 +68,9 @@ test('정적 파일을 제공하고, 경로 탈출은 막는다', async () => {
 
   assert.equal((await fetch(`${BASE}/shared/baseball.js`)).status, 200);
   assert.equal((await fetch(`${BASE}/js/app.js`)).status, 200);
+  assert.equal((await fetch(`${BASE}/minesweeper`)).status, 200);
+  assert.equal((await fetch(`${BASE}/spot`)).status, 200);
+  assert.match(await (await fetch(`${BASE}/spot`)).text(), /틀린그림찾기/);
   assert.equal((await fetch(`${BASE}/../package.json`)).status, 404);
   assert.equal((await fetch(`${BASE}/%2e%2e/package.json`)).status, 404);
   assert.equal((await fetch(`${BASE}/nope.html`)).status, 404);
@@ -454,4 +457,88 @@ test('관전 — 두 판을 지뢰 없이 보고, 채팅하고, 교대 요청을
   assert.equal((await e.until((m) => m.t === 'error')).code, 'no_spectate');
 
   for (const s of [a2, b, c, d, e]) s.close();
+});
+
+/* ───────── 틀린그림찾기 1:1 ───────── */
+
+test('틀린그림 방 — 같은 퍼즐, 정답은 안 새고, 먼저 찍은 사람이 가져가며, 관전자도 본다', async () => {
+  const a = connect();
+  const b = connect();
+  const c = connect();
+  await a.open();
+  await b.open();
+  await c.open();
+
+  a.send({ t: 'create', game: 'spot', name: '가', difficulty: 'easy', countdownSeconds: 0, timeLimitSeconds: 60 });
+  const joined = await a.until((m) => m.t === 'joined');
+  assert.equal(joined.game, 'spot');
+  b.send({ t: 'join', game: 'spot', code: joined.code, name: '나' });
+  await b.until((m) => m.t === 'joined');
+  const pa = await a.state((v) => v.phase === 'playing');
+  const pb = await b.state((v) => v.phase === 'playing');
+  assert.deepEqual(pa.view.puzzle, pb.view.puzzle, '둘이 같은 그림');
+  assert.equal(pa.view.puzzle.diffs, undefined, '정답이 새면 안 된다');
+  assert.equal(pa.view.puzzle.diffCount, 5);
+  assert.ok(pa.view.puzzle.left.length >= 8);
+  assert.equal(typeof pa.view.puzzle.background, 'string');
+
+  // 정답은 서버 테스트가 seed 로 다시 만들어 안다 (브라우저는 모른다)
+  const { generatePuzzle } = await import('../shared/spot.js');
+  const truth = generatePuzzle({ seed: pa.view.puzzle.seed, difficulty: 'easy', theme: pa.view.puzzle.theme });
+  assert.deepEqual(truth.left, pa.view.puzzle.left);
+  const d0 = truth.diffs[0];
+
+  c.send({ t: 'watch', game: 'spot', code: joined.code, name: '다' });
+  await c.until((m) => m.t === 'joined');
+  await c.state((v) => v.phase === 'playing');
+
+  // 가가 첫 차이를 찍는다 → 본인에게 spot_result, 모두에게 found 반영
+  a.send({ t: 'spot', x: d0.cx, y: d0.cy });
+  const res = await a.until((m) => m.t === 'spot_result');
+  assert.equal(res.hit, true);
+  assert.equal(res.index, 0);
+  const seenB = await b.state((v) => v.found.length === 1);
+  assert.equal(seenB.view.found[0].by, 0);
+  assert.equal(seenB.view.found[0].cx, d0.cx);
+  assert.equal(seenB.view.seats[0].found, 1);
+  const seenC = await c.state((v) => v.found.length === 1);
+  assert.equal(seenC.role, 'spectator');
+
+  // 나가 같은 곳을 찍으면 틀림 + 잠김
+  b.send({ t: 'spot', x: d0.cx, y: d0.cy });
+  const miss = await b.until((m) => m.t === 'spot_result');
+  assert.equal(miss.hit, false);
+  assert.ok(miss.lockedUntil > Date.now());
+  const afterMiss = await b.state((v) => v.seats[1].misses === 1);
+  assert.equal(afterMiss.view.seats[1].lockedUntil, miss.lockedUntil);
+
+  // 관전자는 못 찍는다
+  c.send({ t: 'spot', x: d0.cx, y: d0.cy });
+  assert.equal((await c.until((m) => m.t === 'error')).code, 'not_player');
+
+  // 나머지를 가가 다 찍으면 끝 → 가 승
+  for (let i = 1; i < truth.diffs.length; i++) {
+    a.send({ t: 'spot', x: truth.diffs[i].cx, y: truth.diffs[i].cy });
+    await a.until((m) => m.t === 'spot_result');
+  }
+  const over = await b.state((v) => v.phase === 'over');
+  assert.equal(over.view.winner, 0);
+  assert.equal(over.view.overReason, 'found');
+  assert.deepEqual(over.view.history[0].found, [5, 0]);
+  assert.equal(over.view.seats[0].wins, 1);
+
+  // 가가 직접 나가면(판이 끝난 뒤) 자리가 비고, 관전자 다가 앉을 수 있다
+  a.send({ t: 'leave' });
+  const freed = await c.state((v) => v.phase === 'lobby');
+  assert.equal(freed.freeSeat, 0);
+  assert.equal(freed.people.players[0], null);
+  c.send({ t: 'sit' });
+  const sat = await c.until((m) => m.t === 'joined');
+  assert.equal(sat.role, 'player');
+  assert.equal(sat.you, 0);
+  await b.state((v) => v.phase !== 'lobby' && v.seats[0].name === '다');
+
+  a.close();
+  b.close();
+  c.close();
 });

@@ -28,6 +28,7 @@ const MIME = {
 // 확장자 없는 깔끔한 주소 → 실제 파일.
 const PAGES = {
   '/minesweeper': '/minesweeper.html',
+  '/spot': '/spot.html',
 };
 
 // URL 앞부분 → 실제 디렉터리. 이 두 곳 밖으로는 절대 나가지 않는다.
@@ -64,7 +65,7 @@ const ERROR_TEXT = {
 
 /** 만들기/참가 요청이 어느 게임인지. 안 적으면 숫자야구. */
 function kindOf(msg) {
-  return msg.game === 'minesweeper' ? 'minesweeper' : 'baseball';
+  return KINDS[msg.game] && msg.game !== 'baseball' ? msg.game : 'baseball';
 }
 
 function resolveFile(urlPath) {
@@ -149,7 +150,10 @@ function leaveRoom(ws, { explicit = false } = {}) {
   ws.seat = null;
   ws.specToken = null;
   let changed = false;
-  if (seat !== null) changed = room.detach(seat, ws);
+  if (seat !== null) {
+    changed = room.detach(seat, ws);
+    if (explicit && room.vacate(seat)) changed = true;   // 직접 나갔으면 자리를 비운다 (판이 끝난 뒤일 때)
+  }
   if (specToken) changed = room.detachSpectator(specToken, ws, { remove: explicit });
   if (changed) room.broadcast();
 }
@@ -333,6 +337,19 @@ const handlers = {
     room.broadcast();
   },
 
+  /* ── 틀린그림찾기 1:1 ── */
+
+  /** 그림을 찍는다: {x, y} 장면 좌표. 맞았는지는 본인에게만 바로 알려주고, 상태는 모두에게. */
+  spot(ws, msg) {
+    const room = roomFor(ws, 'spot', 'player');
+    if (!room) return;
+    const out = room.rules.click(room.game, ws.seat, msg.x, msg.y, Date.now());
+    if (!out.ok) return sendError(ws, out.error);
+    send(ws, { t: 'spot_result', hit: out.hit, index: out.index ?? null, locked: Boolean(out.locked), lockedUntil: out.lockedUntil ?? null, x: Number(msg.x), y: Number(msg.y) });
+    room.touch();
+    room.broadcast();
+  },
+
   /* ── 공통 ── */
 
   chat(ws, msg) {
@@ -418,7 +435,7 @@ const heartbeat = setInterval(() => {
 const ticker = setInterval(() => store.tickAll(), 1000);
 
 server.listen(PORT, HOST, () => {
-  console.log(`게임 서버 실행 중 → http://localhost:${PORT} (숫자야구 / , 지뢰찾기 /minesweeper)`);
+  console.log(`게임 서버 실행 중 → http://localhost:${PORT} (숫자야구 / · 지뢰찾기 /minesweeper · 틀린그림찾기 /spot)`);
 });
 
 function shutdown() {

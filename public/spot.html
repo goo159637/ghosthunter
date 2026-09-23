@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>틀린그림찾기</title>
+<meta name="description" content="매번 새로 그려지는 틀린그림찾기. 혼자 기록에 도전하거나, 방 코드로 친구와 같은 그림에서 먼저 찾기 대결.">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%8D%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/css/style.css">
+<link rel="stylesheet" href="/css/minesweeper.css">
+<link rel="stylesheet" href="/css/spot.css">
+</head>
+<body>
+<main id="app" class="ms spot">
+
+  <div class="ms-head">
+  <header class="topbar">
+    <a href="/" class="ghost back">← 홈</a>
+    <h1 class="ms-title"><span aria-hidden="true">🔍</span> 틀린그림찾기</h1>
+    <span id="best" class="chip" hidden></span>
+  </header>
+
+  <div id="mode" class="seg" role="tablist" aria-label="모드">
+    <button type="button" role="tab" data-mode="solo" aria-selected="true">혼자</button>
+    <button type="button" role="tab" data-mode="versus" aria-selected="false">1:1 대전</button>
+  </div>
+
+  <section id="controls" class="panel ms-controls">
+    <div class="row">
+      <label class="field">
+        <span>난이도</span>
+        <select id="difficulty">
+          <option value="easy">쉬움 · 5곳</option>
+          <option value="normal" selected>보통 · 7곳</option>
+          <option value="hard">어려움 · 10곳</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>배경</span>
+        <select id="theme">
+          <option value="auto" selected>무작위</option>
+          <option value="park">공원</option>
+          <option value="sea">바다</option>
+          <option value="city">밤거리</option>
+          <option value="space">우주</option>
+        </select>
+      </label>
+      <button id="btn-new" class="primary" type="button">새 그림</button>
+    </div>
+  </section>
+  </div>
+
+  <!-- ─────────── 혼자 ─────────── -->
+  <section id="solo" class="screen">
+    <div id="solo-game" class="panel ms-game">
+      <div class="spot-status">
+        <span id="found" class="counter" title="찾은 곳" aria-label="찾은 곳">0/7</span>
+        <span id="misses" class="counter warn" title="오답 (+5초)" aria-label="오답">✗ 0</span>
+        <span id="clock" class="counter" title="경과 시간 (페널티 포함)" aria-label="경과 시간">000</span>
+      </div>
+      <div id="solo-pair" class="pair">
+        <div class="pic" data-side="left"><div class="scene"></div><svg class="marks" viewBox="0 0 480 360" aria-hidden="true"></svg></div>
+        <div class="pic" data-side="right"><div class="scene"></div><svg class="marks" viewBox="0 0 480 360" aria-hidden="true"></svg></div>
+      </div>
+      <div class="ms-tools">
+        <button id="btn-hint" class="secondary toggle" type="button">💡 힌트 (+20초)</button>
+        <button id="btn-replay" class="secondary toggle" type="button">🔁 같은 그림 다시</button>
+        <button id="seed-chip" class="chip code" type="button" title="이 그림 링크 복사">#0</button>
+      </div>
+      <p id="hint" class="muted">두 그림에서 다른 곳을 찾아 클릭하세요. 어느 쪽 그림을 눌러도 됩니다.</p>
+    </div>
+
+    <div id="result" class="panel ms-result" hidden>
+      <div id="result-badge" class="result"></div>
+      <p id="result-detail" class="lead"></p>
+      <p id="result-sub" class="muted"></p>
+      <div class="row center">
+        <button id="btn-again" class="primary" type="button">새 그림</button>
+        <button id="btn-again-same" class="secondary" type="button">같은 그림 다시</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── 1:1 대전 · 홈 ─────────── -->
+  <section id="vs-home" class="screen" hidden>
+    <div class="cards two">
+      <article class="card">
+        <h2>방 만들기</h2>
+        <p class="muted">위에서 고른 난이도·배경으로 방을 만들고 코드를 친구에게 보내세요. 둘이 <b>같은 그림</b>을 보고, 먼저 찍은 사람이 그 곳을 가져갑니다.</p>
+        <label class="field">
+          <span>닉네임</span>
+          <input id="nickname" type="text" maxlength="16" placeholder="이름을 입력하세요" autocomplete="nickname">
+        </label>
+        <button id="btn-create" class="primary" type="button">방 만들기</button>
+      </article>
+      <article class="card">
+        <h2>코드로 참가 · 관전</h2>
+        <p class="muted">친구가 알려준 4글자 코드를 입력하세요.</p>
+        <label class="field">
+          <span>방 코드</span>
+          <input id="join-code" class="code-input" type="text" maxlength="4" placeholder="ABCD" autocapitalize="characters" autocomplete="off" spellcheck="false">
+        </label>
+        <div class="row">
+          <button id="btn-join" class="primary" type="button">참가하기</button>
+          <button id="btn-watch" class="secondary" type="button">👀 관전하기</button>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ─────────── 1:1 대전 · 대전 화면 ─────────── -->
+  <section id="vs-play" class="screen" hidden>
+    <header class="topbar sub">
+      <button id="btn-leave" class="ghost" type="button">← 나가기</button>
+      <button id="room-code" class="chip code" type="button" hidden title="코드 복사"></button>
+      <span id="conn" class="chip"></span>
+    </header>
+
+    <div id="vs-banner" class="banner">
+      <div class="banner-main">
+        <strong id="vs-title">연결 중…</strong>
+        <span id="vs-sub" class="muted"></span>
+      </div>
+      <div id="vs-score" class="scoreboard" hidden aria-label="승수">
+        <span id="vs-score-me-name" class="name me"></span>
+        <b id="vs-score-me">0</b>
+        <i>:</i>
+        <b id="vs-score-opp">0</b>
+        <span id="vs-score-opp-name" class="name"></span>
+      </div>
+      <div id="vs-count" class="countdown" hidden></div>
+    </div>
+
+    <p id="vs-people" class="muted people" hidden></p>
+
+    <div id="vs-lobby" class="panel" hidden>
+      <p class="lead">상대를 기다리는 중…</p>
+      <div id="lobby-code" class="big-code"></div>
+      <div class="row center">
+        <button id="btn-copy-code" class="secondary" type="button">코드 복사</button>
+        <button id="btn-copy-link" class="secondary" type="button">초대 링크 복사</button>
+        <button class="secondary stand-btn" type="button">👀 관전으로 빠지기</button>
+      </div>
+    </div>
+
+    <div id="vs-spec" class="panel spec-bar" hidden>
+      <span class="lead">👀 관전 중</span>
+      <div id="vs-spec-actions" class="row"></div>
+      <p id="vs-spec-note" class="muted"></p>
+    </div>
+
+    <div id="vs-swaps" class="panel swap-box" hidden></div>
+
+    <div id="vs-arena" class="panel" hidden>
+      <div class="vs-status">
+        <span id="vs-my-tag" class="tag me"></span>
+        <span id="vs-timer" class="counter" title="남은 시간">0:00</span>
+        <span id="vs-opp-tag" class="tag opp"></span>
+      </div>
+      <div id="vs-pair" class="pair">
+        <div class="pic" data-side="left"><div class="scene"></div><svg class="marks" viewBox="0 0 480 360" aria-hidden="true"></svg></div>
+        <div class="pic" data-side="right"><div class="scene"></div><svg class="marks" viewBox="0 0 480 360" aria-hidden="true"></svg></div>
+      </div>
+      <p id="vs-note" class="muted"></p>
+    </div>
+
+    <div id="vs-result" class="panel ms-result" hidden>
+      <div id="vs-result-badge" class="result"></div>
+      <p id="vs-result-detail" class="lead"></p>
+      <p id="vs-result-sub" class="muted"></p>
+      <div class="row center">
+        <button id="btn-rematch" class="primary" type="button">재대결</button>
+        <button class="secondary stand-btn" type="button">👀 관전으로 빠지기</button>
+        <button id="btn-vs-home" class="secondary" type="button">나가기</button>
+      </div>
+      <p id="rematch-state" class="muted"></p>
+      <ol id="vs-history" class="history" hidden></ol>
+    </div>
+
+    <div id="vs-chat" class="panel chat" hidden>
+      <ol id="chat-log"></ol>
+      <form id="chat-form" class="row" autocomplete="off">
+        <input id="chat-input" type="text" maxlength="120" placeholder="메시지 보내기">
+        <button class="secondary" type="submit">전송</button>
+      </form>
+    </div>
+  </section>
+
+  <details class="rules">
+    <summary>규칙 보기</summary>
+    <ul>
+      <li>왼쪽과 오른쪽 그림에서 <b>다른 곳</b>을 찾아 클릭합니다. 색·크기·위치·방향·개수가 다르거나 한쪽에만 있는 것이 있어요.</li>
+      <li>그림은 매번 새로 그려지고 <b>#번호(seed)</b>로 똑같은 그림을 다시 부를 수 있습니다. 번호 칩을 누르면 링크가 복사돼요.</li>
+      <li><b>혼자</b> — 시간 기록. 오답은 +5초, 힌트는 +20초. 난이도별 최고 기록은 이 브라우저에 저장됩니다.</li>
+      <li><b>1:1 대전</b> — 둘이 <b>같은 그림</b>을 보고, 먼저 찍은 사람이 그 곳을 가져갑니다. 다 찾히거나 제한시간(3분)이 끝나면 더 많이 찾은 쪽이 승리. 틀리면 1.5초 동안 찍을 수 없어요.</li>
+      <li><b>관전</b> — 코드로 관전 입장. 빈 자리에 앉거나 플레이어에게 교대를 요청할 수 있습니다.</li>
+    </ul>
+  </details>
+
+  <div id="toast" class="toast" hidden></div>
+</main>
+<script type="module" src="/js/spot.js"></script>
+</body>
+</html>

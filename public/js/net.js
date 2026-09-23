@@ -27,7 +27,7 @@ export function loadToken(code, game = 'baseball') {
 /**
  * @param {{
  *   type:'create'|'join'|'watch', name:string, code?:string,
- *   game?:'baseball'|'minesweeper', options?:object,
+ *   game?:'baseball'|'minesweeper'|'spot', options?:object,
  *   digits?:number, turnSeconds?:number
  * }} intent  options 는 방 만들 때 서버로 그대로 보낸다. (digits/turnSeconds 는 숫자야구의 옛 형식)
  *            'watch' 는 관전으로 들어간다 (지뢰찾기만).
@@ -35,7 +35,8 @@ export function loadToken(code, game = 'baseball') {
 export function createOnlineEngine(intent) {
   const listeners = new Set();
   const errorListeners = new Set();
-  const game = intent.game === 'minesweeper' ? 'minesweeper' : 'baseball';
+  const messageListeners = new Set();   // state/joined/error 가 아닌 게임별 메시지
+  const game = typeof intent.game === 'string' && intent.game ? intent.game : 'baseball';   // 'baseball' | 'minesweeper' | 'spot' …
   const options = intent.options ?? { digits: intent.digits, turnSeconds: intent.turnSeconds };
   let ws = null;
   let attempt = 0;
@@ -111,6 +112,8 @@ export function createOnlineEngine(intent) {
         // 방이 사라졌는데 낡은 토큰으로 붙으려 한 경우엔 토큰을 버리고 처음부터
         if (msg.code === 'bad_token') token = null;
         for (const fn of errorListeners) fn(msg);
+      } else {
+        for (const fn of messageListeners) fn(msg);
       }
     });
 
@@ -152,6 +155,11 @@ export function createOnlineEngine(intent) {
     onError(fn) {
       errorListeners.add(fn);
       return () => errorListeners.delete(fn);
+    },
+    /** 게임별 메시지 (예: 틀린그림의 spot_result) */
+    onMessage(fn) {
+      messageListeners.add(fn);
+      return () => messageListeners.delete(fn);
     },
 
     secret(value) {
@@ -195,6 +203,7 @@ export function createOnlineEngine(intent) {
       if (ws) ws.close();
       listeners.clear();
       errorListeners.clear();
+      messageListeners.clear();
     },
   };
 }
