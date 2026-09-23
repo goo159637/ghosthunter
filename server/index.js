@@ -1,5 +1,5 @@
 /**
- * 게임 서버 — 정적 파일 + WebSocket 대전 (숫자야구, 지뢰찾기 1:1).
+ * 게임 서버 — 정적 파일(숫자야구 · 지뢰찾기 · 숨은그림찾기) + WebSocket 대전 (숫자야구, 지뢰찾기 1:1).
  * 의존성은 ws 하나뿐이다.
  */
 import http from 'node:http';
@@ -22,13 +22,16 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
   '.webmanifest': 'application/manifest+json',
 };
 
 // 확장자 없는 깔끔한 주소 → 실제 파일.
 const PAGES = {
   '/minesweeper': '/minesweeper.html',
-  '/spot': '/spot.html',
+  '/hidden': '/hidden.html',
 };
 
 // URL 앞부분 → 실제 디렉터리. 이 두 곳 밖으로는 절대 나가지 않는다.
@@ -337,19 +340,6 @@ const handlers = {
     room.broadcast();
   },
 
-  /* ── 틀린그림찾기 1:1 ── */
-
-  /** 그림을 찍는다: {x, y} 장면 좌표. 맞았는지는 본인에게만 바로 알려주고, 상태는 모두에게. */
-  spot(ws, msg) {
-    const room = roomFor(ws, 'spot', 'player');
-    if (!room) return;
-    const out = room.rules.click(room.game, ws.seat, msg.x, msg.y, Date.now());
-    if (!out.ok) return sendError(ws, out.error);
-    send(ws, { t: 'spot_result', hit: out.hit, index: out.index ?? null, locked: Boolean(out.locked), lockedUntil: out.lockedUntil ?? null, x: Number(msg.x), y: Number(msg.y) });
-    room.touch();
-    room.broadcast();
-  },
-
   /* ── 공통 ── */
 
   chat(ws, msg) {
@@ -435,7 +425,7 @@ const heartbeat = setInterval(() => {
 const ticker = setInterval(() => store.tickAll(), 1000);
 
 server.listen(PORT, HOST, () => {
-  console.log(`게임 서버 실행 중 → http://localhost:${PORT} (숫자야구 / · 지뢰찾기 /minesweeper · 틀린그림찾기 /spot)`);
+  console.log(`게임 서버 실행 중 → http://localhost:${PORT} (숫자야구 / · 지뢰찾기 /minesweeper · 숨은그림찾기 /hidden)`);
 });
 
 function shutdown() {

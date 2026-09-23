@@ -27,7 +27,7 @@ export function loadToken(code, game = 'baseball') {
 /**
  * @param {{
  *   type:'create'|'join'|'watch', name:string, code?:string,
- *   game?:'baseball'|'minesweeper'|'spot', options?:object,
+ *   game?:'baseball'|'minesweeper', options?:object,
  *   digits?:number, turnSeconds?:number
  * }} intent  options 는 방 만들 때 서버로 그대로 보낸다. (digits/turnSeconds 는 숫자야구의 옛 형식)
  *            'watch' 는 관전으로 들어간다 (지뢰찾기만).
@@ -36,7 +36,7 @@ export function createOnlineEngine(intent) {
   const listeners = new Set();
   const errorListeners = new Set();
   const messageListeners = new Set();   // state/joined/error 가 아닌 게임별 메시지
-  const game = typeof intent.game === 'string' && intent.game ? intent.game : 'baseball';   // 'baseball' | 'minesweeper' | 'spot' …
+  const game = typeof intent.game === 'string' && intent.game ? intent.game : 'baseball';   // 'baseball' | 'minesweeper' …
   const options = intent.options ?? { digits: intent.digits, turnSeconds: intent.turnSeconds };
   let ws = null;
   let attempt = 0;
@@ -156,7 +156,7 @@ export function createOnlineEngine(intent) {
       errorListeners.add(fn);
       return () => errorListeners.delete(fn);
     },
-    /** 게임별 메시지 (예: 틀린그림의 spot_result) */
+    /** 게임별 메시지 */
     onMessage(fn) {
       messageListeners.add(fn);
       return () => messageListeners.delete(fn);

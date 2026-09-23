@@ -7,10 +7,9 @@
 import { randomInt, randomBytes } from 'node:crypto';
 import * as baseball from '../shared/engine.js';
 import * as minesweeper from '../shared/msversus.js';
-import * as spot from '../shared/spotversus.js';
 
 /** 방 종류 → 규칙 모듈 */
-export const KINDS = { baseball, minesweeper, spot };
+export const KINDS = { baseball, minesweeper };
 
 // 헷갈리는 글자(0/O, 1/I)를 뺀 알파벳
 const CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -131,7 +130,7 @@ export class Room {
 
   /**
    * 자리를 완전히 비운다 (직접 "나가기"를 누른 경우). 관전자가 앉을 수 있게.
-   * 규칙이 자리 비우기를 지원하고(지뢰찾기·틀린그림) 판이 진행 중이 아닐 때만. 아니면 유예 처리대로.
+   * 규칙이 자리 비우기를 지원하고(지뢰찾기) 판이 진행 중이 아닐 때만. 아니면 유예 처리대로.
    */
   vacate(index) {
     if (typeof this.rules.unseatPlayer !== 'function') return false;

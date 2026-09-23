@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>숨은그림찾기</title>
+<meta name="description" content="그림 속에 숨어 있는 물건을 모두 찾아보세요. 쉬움부터 극한까지 5단계, 기록 도전.">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%8E%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/css/style.css">
+<link rel="stylesheet" href="/css/hidden.css">
+</head>
+<body>
+<main id="app" class="hp">
+
+  <header class="topbar">
+    <a href="/" class="ghost back">← 홈</a>
+    <h1 class="hp-title"><span aria-hidden="true">🔎</span> 숨은그림찾기</h1>
+    <span id="progress-chip" class="chip" hidden></span>
+  </header>
+
+  <!-- 그림 고르기 -->
+  <section id="controls" class="hp-controls">
+    <div id="difficulty" class="seg" role="tablist" aria-label="난이도"></div>
+    <p class="muted hp-help">그림을 골라 시작하세요. 그림 속에 숨은 물건을 찾아 누르면 돼요 — 오답은 +5초, 힌트는 +20초. 같은 물건이 여러 개면 하나만 찾으면 돼요.</p>
+    <div id="gallery" class="hp-gallery" aria-label="그림 고르기"></div>
+  </section>
+
+  <!-- 판 -->
+  <section id="stage" hidden>
+    <div class="hp-bar">
+      <button id="btn-pick" class="ghost small" type="button">← 그림 고르기</button>
+      <span class="hp-stat"><b id="found-count">0</b>/<span id="total-count">0</span></span>
+      <span class="hp-stat" id="timer">0:00</span>
+      <span class="hp-stat muted" id="miss-count" title="오답 한 번에 +5초">오답 0</span>
+      <span class="spacer"></span>
+      <button id="btn-hint" class="secondary small" type="button">💡 힌트 <small>+20초</small></button>
+      <button id="btn-zoom" class="secondary small" type="button" aria-pressed="false">🔍 확대</button>
+    </div>
+
+    <div id="pic-wrap" class="hp-pic-wrap">
+      <div id="pic" class="hp-pic">
+        <img id="img" alt="" draggable="false">
+        <svg id="marks" class="marks" aria-hidden="true"></svg>
+      </div>
+    </div>
+
+    <div id="items" class="hp-items" aria-label="찾을 물건"></div>
+
+    <div id="result" class="panel hp-result" hidden>
+      <div class="result win">다 찾았어요! 🎉</div>
+      <p id="result-text"></p>
+      <p id="result-best" class="muted"></p>
+      <div class="row center">
+        <button id="btn-next" class="primary" type="button">다음 그림 →</button>
+        <button id="btn-again" class="secondary" type="button">다시 하기</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 정답 편집기 (/hidden?edit=1) -->
+  <section id="editor" class="panel hp-editor" hidden>
+    <h2>정답 편집기</h2>
+    <p class="muted">물건을 고른 뒤 그림을 누르면 그 자리에 정답이 추가되고, 이미 있는 정답을 누르면 지워져요. 다 되면 JSON 을 복사해 <code>public/hidden/puzzles.json</code> 에 넣으세요.</p>
+    <div class="row">
+      <label class="field"><span>물건</span><select id="ed-item"></select></label>
+      <label class="field"><span>반지름</span><input id="ed-r" type="number" min="8" max="200" step="1" value="35"></label>
+      <label class="field"><span>새 물건</span><input id="ed-new" type="text" maxlength="20" placeholder="이름"></label>
+      <button id="ed-add" class="secondary" type="button">물건 추가</button>
+      <button id="ed-del" class="secondary" type="button">물건 삭제</button>
+    </div>
+    <div class="row">
+      <button id="ed-undo" class="secondary" type="button">되돌리기</button>
+      <button id="ed-copy" class="primary" type="button">JSON 복사</button>
+    </div>
+    <textarea id="ed-out" rows="8" spellcheck="false"></textarea>
+  </section>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</main>
+<script type="module" src="/js/hidden.js"></script>
+</body>
+</html>
