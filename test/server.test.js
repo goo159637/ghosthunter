@@ -210,3 +210,49 @@ test('없는 방·가득 찬 방·잘못된 요청은 에러로 돌려준다', a
   b.close();
   c.close();
 });
+
+test('틀린그림찾기 방 — 카운트다운 뒤 시작, 누른 결과가 상대에게도 보인다', async () => {
+  const a = connect();
+  const b = connect();
+  await a.open();
+  await b.open();
+
+  a.send({ t: 'create', game: 'spot', level: 'easy', name: '가' });
+  const joined = await a.until((m) => m.t === 'joined');
+  b.send({ t: 'join', code: joined.code, name: '나' });
+  await b.until((m) => m.t === 'joined');
+
+  const counting = await a.until((m) => m.t === 'state' && m.view.phase === 'countdown');
+  assert.equal(counting.game, 'spot');
+  assert.equal(counting.view.total, 5);
+  assert.ok(counting.view.puzzle.left.length > 10);
+  assert.equal(counting.view.answers, null, '정답이 새어나가면 안 된다');
+
+  a.send({ t: 'guess', value: '123' });
+  assert.equal((await a.until((m) => m.t === 'error')).code, 'wrong_game');
+
+  const playing = await a.state((v) => v.phase === 'playing');
+  assert.ok(playing.view.deadline > Date.now());
+
+  // 정답 위치는 서버만 안다 — 두 그림에서 달라진 물건을 찾아 그 자리를 누른다
+  const { left, right } = playing.view.puzzle;
+  const changed = left.map((l, i) => (JSON.stringify(l) !== JSON.stringify(right[i]) ? l : null)).filter((l) => l && l.k !== 'building');
+  assert.ok(changed.length > 0);
+  a.send({ t: 'tap', x: changed[0].x, y: changed[0].y });
+  const hit = await a.state((v) => v.me.found === 1);
+  assert.equal(hit.view.found[0].by, 'you');
+  const seen = await b.state((v) => v.opponent.found === 1);
+  assert.equal(seen.view.found[0].by, 'opponent');
+
+  a.send({ t: 'tap', x: 'x', y: 1 });
+  assert.equal((await a.until((m) => m.t === 'error')).code, 'bad_tap');
+
+  b.send({ t: 'surrender' });
+  const over = await a.state((v) => v.phase === 'over');
+  assert.equal(over.view.winner, 'you');
+  assert.equal(over.view.overReason, 'forfeit');
+  assert.equal(over.view.answers.length, 5, '끝난 뒤엔 정답이 공개된다');
+
+  a.close();
+  b.close();
+});

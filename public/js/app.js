@@ -1,19 +1,29 @@
 /**
  * 화면 로직.
- * 온라인 엔진과 AI 엔진이 똑같은 모양의 상태(view)를 주기 때문에,
- * 여기서는 둘을 구분하지 않고 한 갈래로만 그린다.
+ * 온라인 엔진과 로컬 엔진(AI 연습·혼자 하기)이 똑같은 모양의 상태(view)를 주기 때문에,
+ * 여기서는 온라인인지 로컬인지 구분하지 않는다. 구분하는 건 게임 종류(숫자야구 / 틀린그림찾기)뿐이다.
  */
 import { Phase, SETUP_SECONDS } from '/shared/engine.js';
 import { isValidNumber, randomNumber } from '/shared/baseball.js';
+import { SpotPhase } from '/shared/spotengine.js';
 import { createOnlineEngine, loadToken } from '/js/net.js';
 import { createLocalEngine } from '/js/local.js';
+import { createSpotSoloEngine } from '/js/spotsolo.js';
+import { createSpotUI } from '/js/spotui.js';
 
 const $ = (id) => document.getElementById(id);
 const NAME_KEY = 'baseball:nickname';
+const TAB_KEY = 'home:game';
+
+const HOME_TEXT = {
+  baseball: { title: '⚾ 숫자야구', sub: '서로 다른 숫자를 정해 놓고 번갈아 맞히는 게임.<br>방 코드로 친구와 1:1, 혼자일 땐 AI와.' },
+  spot: { title: '🔍 틀린그림찾기', sub: '두 그림에서 다른 곳을 먼저 찾는 게임.<br>방 코드로 친구와 1:1, 혼자일 땐 기록에 도전.' },
+};
 
 let engine = null;
 let unsubscribe = null;
 let snapshot = null;
+const spotUI = createSpotUI({ $, toast, getEngine: () => engine });
 
 /* ───────── 공통 유틸 ───────── */
 
@@ -38,6 +48,7 @@ function span(cls, text) {
 function showScreen(which) {
   $('home').hidden = which !== 'home';
   $('play').hidden = which !== 'play';
+  if (which === 'home') showBest(); // 방금 세운 기록이 보이도록
   window.scrollTo(0, 0);
 }
 
@@ -66,6 +77,7 @@ function stopEngine({ keepUrl = false } = {}) {
   unsubscribe = null;
   engine = null;
   snapshot = null;
+  spotUI.reset();
   if (!keepUrl && location.search) history.replaceState(null, '', location.pathname);
 }
 
@@ -93,6 +105,10 @@ function startOnline(intent) {
   startEngine(createOnlineEngine(intent));
 }
 
+function startSpotSolo() {
+  startEngine(createSpotSoloEngine({ level: $('spot-solo-level').value, name: nickname() || '나' }));
+}
+
 function startLocal() {
   const digits = Number($('ai-digits').value);
   startEngine(
@@ -113,6 +129,10 @@ function connectionChip() {
   if (!engine) return;
   if (engine.mode === 'ai') {
     chip.textContent = `AI 연습 · ${engine.aiProfile.label}`;
+    return;
+  }
+  if (engine.mode === 'solo') {
+    chip.textContent = `혼자 하기 · ${engine.levelLabel}`;
     return;
   }
   const status = snapshot?.status ?? 'connecting';
@@ -205,11 +225,33 @@ function render() {
   if (!view) {
     $('banner-title').textContent = '연결 중…';
     $('banner-sub').textContent = '';
-    for (const id of ['panel-lobby', 'panel-setup', 'panel-board', 'panel-over']) $(id).hidden = true;
+    for (const id of ['panel-lobby', 'panel-setup', 'panel-board', 'panel-spot', 'panel-over']) $(id).hidden = true;
     return;
   }
 
+  if (snapshot.game === 'spot') renderSpot(view, code);
+  else renderBaseball(view, code);
+
+  if (engine?.mode === 'online') renderChat(snapshot.chat ?? [], view.you);
+  updateTimer();
+}
+
+function renderSpot(view, code) {
+  const { phase } = view;
+  $('panel-lobby').hidden = phase !== SpotPhase.LOBBY;
+  $('panel-setup').hidden = true;
+  $('panel-board').hidden = true;
+  $('panel-over').hidden = phase !== SpotPhase.OVER;
+  $('banner').classList.toggle('mine', phase === SpotPhase.PLAYING);
+  const { title, sub } = spotUI.render(view, code);
+  $('banner-title').textContent = title;
+  $('banner-sub').textContent = sub;
+}
+
+function renderBaseball(view, code) {
   const { phase, digits } = view;
+  $('panel-spot').hidden = true;
+  $('btn-rematch').textContent = '재대결';
   $('panel-lobby').hidden = phase !== Phase.LOBBY;
   $('panel-setup').hidden = phase !== Phase.SETUP;
   $('panel-board').hidden = phase !== Phase.PLAYING && phase !== Phase.OVER;
@@ -293,7 +335,7 @@ function updateTimer() {
     box.hidden = true;
     return;
   }
-  const total = (view.phase === Phase.SETUP ? SETUP_SECONDS : view.turnSeconds) * 1000;
+  const total = view.timeTotal ?? (view.phase === Phase.SETUP ? SETUP_SECONDS : view.turnSeconds) * 1000;
   const left = Math.max(0, view.deadline - Date.now());
   box.hidden = false;
   box.classList.toggle('low', left <= 10_000);
@@ -304,8 +346,9 @@ function updateTimer() {
 setInterval(() => {
   if (!snapshot?.view) return;
   updateTimer();
+  if (snapshot.game === 'spot') spotUI.tick();
   // 상대가 끊겼을 때 남은 복귀 시간을 배너에 흘려보낸다
-  if (snapshot.grace && snapshot.view.phase !== Phase.OVER) {
+  if (snapshot.grace && snapshot.view.phase !== 'over') {
     const left = Math.max(0, Math.ceil((snapshot.grace - Date.now()) / 1000));
     $('banner-sub').textContent = `상대 연결 끊김 — ${left}초 안에 돌아오지 않으면 기권 처리`;
   }
@@ -329,11 +372,18 @@ function readNumber(input, digits) {
 $('btn-create').addEventListener('click', () => {
   startOnline({
     type: 'create',
+    game: 'baseball',
     name: nickname(),
     digits: Number($('create-digits').value),
     turnSeconds: Number($('create-time').value),
   });
 });
+
+$('btn-spot-create').addEventListener('click', () => {
+  startOnline({ type: 'create', game: 'spot', name: nickname(), level: $('spot-level').value });
+});
+
+$('btn-spot-solo').addEventListener('click', startSpotSolo);
 
 $('btn-join').addEventListener('click', () => {
   const code = $('join-code').value.trim().toUpperCase();
@@ -395,10 +445,16 @@ $('btn-home').addEventListener('click', () => {
   showScreen('home');
 });
 
-$('btn-leave').addEventListener('click', () => {
+function isLive() {
   const phase = snapshot?.view?.phase;
-  const live = phase === Phase.SETUP || phase === Phase.PLAYING;
-  if (live && !confirm('지금 나가면 기권 처리됩니다. 나갈까요?')) return;
+  if (snapshot?.game === 'spot') return phase === SpotPhase.COUNTDOWN || phase === SpotPhase.PLAYING;
+  return phase === Phase.SETUP || phase === Phase.PLAYING;
+}
+
+$('btn-leave').addEventListener('click', () => {
+  const live = isLive();
+  // 혼자 하기는 기권해도 잃을 게 없으니 묻지 않는다
+  if (live && engine?.mode !== 'solo' && !confirm('지금 나가면 기권 처리됩니다. 나갈까요?')) return;
   if (live && engine) engine.surrender();
   stopEngine();
   showScreen('home');
@@ -417,11 +473,44 @@ for (const id of ['secret-input', 'guess-input']) {
   });
 }
 
+/* ───────── 홈 탭 ───────── */
+
+function showBest() {
+  const level = $('spot-solo-level').value;
+  let best = null;
+  try {
+    best = Number(localStorage.getItem(`spot:best:${level}`)) || null;
+  } catch { /* 무시 */ }
+  $('spot-best').textContent = best ? `내 최고 기록 ${(best / 1000).toFixed(1)}초` : '아직 기록이 없어요';
+}
+
+function selectTab(game) {
+  const key = HOME_TEXT[game] ? game : 'baseball';
+  for (const btn of document.querySelectorAll('.tabs [role=tab]')) {
+    btn.setAttribute('aria-selected', btn.dataset.game === key ? 'true' : 'false');
+  }
+  for (const el of document.querySelectorAll('[data-for]')) el.hidden = el.dataset.for !== key;
+  $('hero-title').textContent = HOME_TEXT[key].title;
+  $('hero-sub').innerHTML = HOME_TEXT[key].sub;
+  if (key === 'spot') showBest();
+  try {
+    localStorage.setItem(TAB_KEY, key);
+  } catch { /* 무시 */ }
+}
+
+for (const btn of document.querySelectorAll('.tabs [role=tab]')) {
+  btn.addEventListener('click', () => selectTab(btn.dataset.game));
+}
+$('spot-solo-level').addEventListener('change', showBest);
+
 /* ───────── 시작 ───────── */
 
 try {
   $('nickname').value = localStorage.getItem(NAME_KEY) ?? '';
-} catch { /* 무시 */ }
+  selectTab(localStorage.getItem(TAB_KEY) ?? 'baseball');
+} catch {
+  selectTab('baseball');
+}
 
 const roomParam = new URLSearchParams(location.search).get('room');
 if (roomParam) {

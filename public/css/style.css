@@ -1,4 +1,4 @@
-/* 숫자야구 — 모바일 우선, 다크/라이트 모두 지원 */
+/* 숫자야구 · 틀린그림찾기 — 모바일 우선, 다크/라이트 모두 지원 */
 :root {
   --bg: #0e1524;
   --surface: #172033;
@@ -12,6 +12,7 @@
   --danger: #ef5b5b;
   --strike: #35c26a;
   --ball: #f0b429;
+  --theirs: #ff5d8f;
   --radius: 14px;
   --shadow: 0 10px 30px rgba(0, 0, 0, .35);
 }
@@ -61,6 +62,17 @@ p { margin: 0 0 12px; }
 /* ── 홈 ── */
 .hero { text-align: center; padding: 18px 0 10px; }
 .hero p { color: var(--muted); }
+
+.tabs {
+  display: flex; gap: 6px; padding: 5px; margin: 0 auto 16px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+  max-width: 420px;
+}
+.tabs button {
+  flex: 1; padding: 9px 10px; border-radius: 999px; border: none;
+  background: none; color: var(--muted); font-weight: 600;
+}
+.tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
 
 .cards { display: grid; gap: 14px; margin: 18px 0; }
 @media (min-width: 720px) { .cards { grid-template-columns: repeat(3, 1fr); align-items: start; } }
@@ -215,6 +227,45 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   padding: 10px 18px; box-shadow: var(--shadow);
   font-size: .9rem; z-index: 20; max-width: 90vw; text-align: center;
 }
+
+/* ── 틀린그림찾기 ── */
+.spot-score {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 12px; font-size: .95rem;
+}
+.spot-score .who { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.spot-score .who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spot-score .who b { font-size: 1.4rem; font-variant-numeric: tabular-nums; }
+.spot-score .mine b { color: var(--accent); }
+.spot-score .theirs b { color: var(--theirs); }
+.pips { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; }
+.pips i { width: 11px; height: 11px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--line); }
+.pips i.mine { background: var(--accent); border-color: var(--accent); }
+.pips i.theirs { background: var(--theirs); border-color: var(--theirs); }
+
+.spot-stage { position: relative; display: grid; gap: 10px; }
+@media (min-width: 720px) { .spot-stage { grid-template-columns: 1fr 1fr; } }
+.spot-pic {
+  display: block; width: 100%; height: auto; aspect-ratio: 4 / 3;
+  border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line);
+  touch-action: manipulation; user-select: none; -webkit-user-select: none; cursor: crosshair;
+  transition: filter .3s;
+}
+.spot-stage.waiting .spot-pic { filter: blur(10px); pointer-events: none; }
+.spot-stage.locked .spot-pic { cursor: not-allowed; filter: saturate(.5); }
+.spot-countdown {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-size: 5rem; font-weight: 800; color: var(--text);
+  text-shadow: 0 4px 24px rgba(0, 0, 0, .5); pointer-events: none;
+}
+.mark { fill: none; stroke-width: 3; vector-effect: non-scaling-stroke; }
+.mark.mine { stroke: var(--accent); }
+.mark.theirs { stroke: var(--theirs); }
+.mark.missed { stroke: var(--warn); stroke-dasharray: 5 4; }
+.mark.hint { stroke: var(--warn); stroke-width: 4; animation: pulse .8s ease-in-out infinite alternate; }
+.mark.miss { stroke: var(--danger); stroke-width: 4; stroke-linecap: round; animation: fade .7s ease-out forwards; }
+@keyframes pulse { from { opacity: .4; } to { opacity: 1; } }
+@keyframes fade { from { opacity: 1; } to { opacity: 0; } }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }

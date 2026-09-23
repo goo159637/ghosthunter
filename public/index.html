@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>숫자야구 · 온라인 대전</title>
-<meta name="description" content="방 코드 하나로 친구와 1:1 숫자야구. 혼자일 땐 AI와 연습.">
+<title>숫자야구 · 틀린그림찾기</title>
+<meta name="description" content="방 코드 하나로 친구와 1:1 숫자야구와 틀린그림찾기. 혼자일 땐 AI 연습과 기록 도전.">
 <meta name="color-scheme" content="dark light">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%BE%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/css/style.css">
@@ -15,9 +15,14 @@
   <!-- ─────────── 홈 ─────────── -->
   <section id="home" class="screen">
     <header class="hero">
-      <h1><span aria-hidden="true">⚾</span> 숫자야구</h1>
-      <p>서로 다른 숫자를 정해 놓고 번갈아 맞히는 게임.<br>방 코드로 친구와 1:1, 혼자일 땐 AI와.</p>
+      <h1 id="hero-title"><span aria-hidden="true">⚾</span> 숫자야구</h1>
+      <p id="hero-sub">서로 다른 숫자를 정해 놓고 번갈아 맞히는 게임.<br>방 코드로 친구와 1:1, 혼자일 땐 AI와.</p>
     </header>
+
+    <div class="tabs" role="tablist" aria-label="게임 고르기">
+      <button type="button" role="tab" data-game="baseball" aria-selected="true">⚾ 숫자야구</button>
+      <button type="button" role="tab" data-game="spot" aria-selected="false">🔍 틀린그림찾기</button>
+    </div>
 
     <label class="field">
       <span>닉네임</span>
@@ -25,7 +30,7 @@
     </label>
 
     <div class="cards">
-      <article class="card">
+      <article class="card" data-for="baseball">
         <h2>온라인 대전 만들기</h2>
         <p class="muted">방을 만들고 코드를 친구에게 보내세요.</p>
         <div class="row">
@@ -51,6 +56,20 @@
         <button id="btn-create" class="primary">방 만들기</button>
       </article>
 
+      <article class="card" data-for="spot">
+        <h2>온라인 대전 만들기</h2>
+        <p class="muted">같은 그림을 보고 먼저 찾는 사람이 임자.</p>
+        <label class="field">
+          <span>난이도</span>
+          <select id="spot-level">
+            <option value="easy">쉬움 · 5곳 · 90초</option>
+            <option value="normal" selected>보통 · 7곳 · 120초</option>
+            <option value="hard">어려움 · 9곳 · 150초</option>
+          </select>
+        </label>
+        <button id="btn-spot-create" class="primary">방 만들기</button>
+      </article>
+
       <article class="card">
         <h2>코드로 참가</h2>
         <p class="muted">친구가 알려준 4글자 코드를 입력하세요.</p>
@@ -61,7 +80,7 @@
         <button id="btn-join" class="primary">참가하기</button>
       </article>
 
-      <article class="card">
+      <article class="card" data-for="baseball">
         <h2>AI 연습</h2>
         <p class="muted">서버 없이 바로 시작 · 제한시간 없음</p>
         <div class="row">
@@ -85,9 +104,36 @@
         </div>
         <button id="btn-ai" class="primary">AI와 대결</button>
       </article>
+
+      <article class="card" data-for="spot">
+        <h2>혼자 하기</h2>
+        <p class="muted">서버 없이 바로 시작 · 제한시간 안에 모두 찾기</p>
+        <label class="field">
+          <span>난이도</span>
+          <select id="spot-solo-level">
+            <option value="easy">쉬움 · 5곳 · 90초</option>
+            <option value="normal" selected>보통 · 7곳 · 120초</option>
+            <option value="hard">어려움 · 9곳 · 150초</option>
+          </select>
+        </label>
+        <p id="spot-best" class="muted"></p>
+        <button id="btn-spot-solo" class="primary">시작</button>
+      </article>
     </div>
 
-    <details class="rules">
+    <details class="rules" data-for="spot">
+      <summary>규칙 보기</summary>
+      <ul>
+        <li>두 그림에서 <b>서로 다른 곳</b>을 찾아 누르세요. 어느 쪽 그림을 눌러도 됩니다.</li>
+        <li>온라인 대전은 둘이 <b>같은 그림</b>을 동시에 봅니다. 먼저 누른 사람이 그 자리를 가져갑니다.</li>
+        <li>다 찾거나 남은 개수로 역전이 불가능해지면 바로 끝. 시간이 끝나면 <b>더 많이 찾은 사람</b>이 이기고, 같으면 무승부입니다.</li>
+        <li>틀린 곳을 누르면 <b>1.5초</b> 동안 누를 수 없습니다.</li>
+        <li>혼자 하기는 제한시간 안에 모두 찾으면 성공. 힌트를 쓰면 <b>10초</b>가 줄어듭니다.</li>
+        <li>난이도 — 쉬움 5곳·90초 / 보통 7곳·120초 / 어려움 9곳·150초. 그림은 매번 새로 만들어집니다.</li>
+      </ul>
+    </details>
+
+    <details class="rules" data-for="baseball">
       <summary>규칙 보기</summary>
       <ul>
         <li>둘 다 <b>서로 다른 숫자</b>로 된 비밀번호를 정합니다. (예: 3자리라면 <code>427</code>)</li>
@@ -157,6 +203,24 @@
         <button id="btn-guess" class="primary" type="submit">공격</button>
       </form>
       <p id="guess-hint" class="muted"></p>
+    </div>
+
+    <!-- 틀린그림찾기 -->
+    <div id="panel-spot" class="panel" hidden>
+      <div class="spot-score">
+        <div class="who mine"><span id="spot-me-name"></span><b id="spot-me-count">0</b></div>
+        <div id="spot-pips" class="pips" aria-hidden="true"></div>
+        <div id="spot-opp" class="who theirs"><b id="spot-opp-count">0</b><span id="spot-opp-name"></span></div>
+      </div>
+      <div id="spot-stage" class="spot-stage">
+        <svg id="spot-left" class="spot-pic" viewBox="0 0 400 300" role="img" aria-label="왼쪽 그림"><g class="scene"></g><g class="marks"></g></svg>
+        <svg id="spot-right" class="spot-pic" viewBox="0 0 400 300" role="img" aria-label="오른쪽 그림"><g class="scene"></g><g class="marks"></g></svg>
+        <div id="spot-countdown" class="spot-countdown" hidden>3</div>
+      </div>
+      <div class="row center">
+        <button id="btn-hint" class="secondary" type="button" hidden>힌트 (−10초)</button>
+      </div>
+      <p id="spot-note" class="muted"></p>
     </div>
 
     <!-- 결과 -->

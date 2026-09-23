@@ -1,5 +1,5 @@
 /**
- * 숫자야구 서버 — 정적 파일 + WebSocket 대전.
+ * 숫자야구 · 틀린그림찾기 서버 — 정적 파일 + WebSocket 대전.
  * 의존성은 ws 하나뿐이다.
  */
 import http from 'node:http';
@@ -8,8 +8,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { MIN_DIGITS, MAX_DIGITS } from '../shared/baseball.js';
-import { normalizeOptions } from '../shared/engine.js';
 import { RoomStore, actions } from './rooms.js';
+import { gameFor } from './games.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -46,6 +46,9 @@ const ERROR_TEXT = {
   not_your_turn: '아직 상대 차례예요.',
   duplicate_guess: '이미 해 본 숫자예요.',
   not_over: '아직 게임이 끝나지 않았어요.',
+  wrong_game: '이 방에서는 할 수 없는 동작이에요.',
+  bad_tap: '그림 안을 눌러 주세요.',
+  locked: '잘못 눌렀어요 — 잠시 뒤에 다시!',
   rate_limited: '요청이 너무 빨라요.',
 };
 
@@ -140,8 +143,8 @@ function enter(ws, room, index, token) {
 
 const handlers = {
   create(ws, msg) {
-    const opts = normalizeOptions({ digits: msg.digits, turnSeconds: msg.turnSeconds });
-    const room = store.create(opts);
+    const rules = gameFor(msg.game);
+    const room = store.create(rules, rules.normalize(msg));
     if (!room) return sendError(ws, 'server_full');
     const seat = room.take(msg.name);
     enter(ws, room, seat.index, seat.token);
@@ -166,6 +169,7 @@ const handlers = {
 
   secret(ws, msg) {
     if (!ws.room) return sendError(ws, 'no_room');
+    if (ws.room.rules.key !== 'baseball') return sendError(ws, 'wrong_game');
     const out = actions.submitSecret(ws.room.game, ws.seat, String(msg.value ?? ''));
     if (!out.ok) return sendError(ws, out.error);
     ws.room.touch();
@@ -174,7 +178,17 @@ const handlers = {
 
   guess(ws, msg) {
     if (!ws.room) return sendError(ws, 'no_room');
+    if (ws.room.rules.key !== 'baseball') return sendError(ws, 'wrong_game');
     const out = actions.makeGuess(ws.room.game, ws.seat, String(msg.value ?? ''));
+    if (!out.ok) return sendError(ws, out.error);
+    ws.room.touch();
+    ws.room.broadcast();
+  },
+
+  tap(ws, msg) {
+    if (!ws.room) return sendError(ws, 'no_room');
+    if (ws.room.rules.key !== 'spot') return sendError(ws, 'wrong_game');
+    const out = actions.tap(ws.room.game, ws.seat, msg.x, msg.y);
     if (!out.ok) return sendError(ws, out.error);
     ws.room.touch();
     ws.room.broadcast();
@@ -187,7 +201,7 @@ const handlers = {
 
   rematch(ws) {
     if (!ws.room) return sendError(ws, 'no_room');
-    const out = actions.requestRematch(ws.room.game, ws.seat);
+    const out = ws.room.rules.requestRematch(ws.room.game, ws.seat);
     if (!out.ok) return sendError(ws, out.error);
     ws.room.touch();
     ws.room.broadcast();
@@ -195,7 +209,7 @@ const handlers = {
 
   surrender(ws) {
     if (!ws.room) return sendError(ws, 'no_room');
-    actions.forfeit(ws.room.game, ws.seat, 'forfeit');
+    ws.room.rules.forfeit(ws.room.game, ws.seat, 'forfeit');
     ws.room.broadcast();
   },
 
@@ -256,10 +270,11 @@ const heartbeat = setInterval(() => {
   }
 }, 30_000);
 
-const ticker = setInterval(() => store.tickAll(), 1000);
+// 틀린그림찾기 카운트다운(3초)이 늦지 않게 자주 돈다. 방 500개여도 가볍다.
+const ticker = setInterval(() => store.tickAll(), 250);
 
 server.listen(PORT, HOST, () => {
-  console.log(`숫자야구 서버 실행 중 → http://localhost:${PORT} (${MIN_DIGITS}~${MAX_DIGITS}자리)`);
+  console.log(`숫자야구 · 틀린그림찾기 서버 실행 중 → http://localhost:${PORT} (${MIN_DIGITS}~${MAX_DIGITS}자리)`);
 });
 
 function shutdown() {

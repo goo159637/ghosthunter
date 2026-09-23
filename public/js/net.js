@@ -24,7 +24,7 @@ export function loadToken(code) {
 }
 
 /**
- * @param {{type:'create'|'join', name:string, code?:string, digits?:number, turnSeconds?:number}} intent
+ * @param {{type:'create'|'join', name:string, code?:string, game?:string, digits?:number, turnSeconds?:number, level?:string}} intent
  */
 export function createOnlineEngine(intent) {
   const listeners = new Set();
@@ -35,7 +35,7 @@ export function createOnlineEngine(intent) {
   let code = intent.type === 'join' ? String(intent.code || '').toUpperCase().trim() : null;
   let token = code ? loadToken(code) : null;
   let seat = null;
-  let last = { view: null, chat: [], grace: null, code, status: 'connecting' };
+  let last = { game: intent.game ?? null, view: null, chat: [], grace: null, code, status: 'connecting' };
 
   const emit = (patch) => {
     last = { ...last, ...patch };
@@ -52,7 +52,9 @@ export function createOnlineEngine(intent) {
 
   const handshake = () => {
     if (code && token) send({ t: 'rejoin', code, token });
-    else if (intent.type === 'create') send({ t: 'create', name: intent.name, digits: intent.digits, turnSeconds: intent.turnSeconds });
+    else if (intent.type === 'create') {
+      send({ t: 'create', game: intent.game, name: intent.name, digits: intent.digits, turnSeconds: intent.turnSeconds, level: intent.level });
+    }
     else send({ t: 'join', code, name: intent.name });
   };
 
@@ -81,7 +83,7 @@ export function createOnlineEngine(intent) {
         storeToken(code, token);
         emit({ code, status: 'online' });
       } else if (msg.t === 'state') {
-        emit({ view: msg.view, chat: msg.chat, grace: msg.grace, code: msg.code, status: 'online' });
+        emit({ game: msg.game, view: msg.view, chat: msg.chat, grace: msg.grace, code: msg.code, status: 'online' });
       } else if (msg.t === 'error') {
         // 방이 사라졌는데 낡은 토큰으로 붙으려 한 경우엔 토큰을 버리고 처음부터
         if (msg.code === 'bad_token') token = null;
@@ -130,6 +132,12 @@ export function createOnlineEngine(intent) {
     },
     guess(value) {
       send({ t: 'guess', value });
+    },
+    tap(x, y) {
+      send({ t: 'tap', x, y });
+    },
+    hint() {
+      return { ok: false, error: 'not_solo' };
     },
     chat(text) {
       send({ t: 'chat', text });
