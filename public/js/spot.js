@@ -73,11 +73,12 @@ async function copy(text, label) {
 /* ───────── 저장 ───────── */
 
 function loadSettings() {
-  const def = { mode: 'solo', difficulty: 'normal', theme: 'auto' };
+  const def = { mode: 'solo', kind: 'diff', difficulty: 'normal', theme: 'auto' };
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     const out = { ...def, ...saved };
-    if (!S.PRESETS[out.difficulty]) out.difficulty = def.difficulty;
+    if (!S.MODES.includes(out.kind)) out.kind = 'diff';
+    if (!S.PRESETS.diff[out.difficulty]) out.difficulty = def.difficulty;
     if (out.theme !== 'auto' && !S.THEMES.includes(out.theme)) out.theme = 'auto';
     if (out.mode !== 'versus') out.mode = 'solo';
     return out;
@@ -96,7 +97,7 @@ function loadBest() {
   try {
     const saved = JSON.parse(localStorage.getItem(BEST_KEY) || '{}');
     const out = {};
-    for (const name of Object.keys(S.PRESETS)) if (Number.isFinite(saved[name]) && saved[name] > 0) out[name] = saved[name];
+    for (const key of Object.keys(saved)) if (Number.isFinite(saved[key]) && saved[key] > 0) out[key] = saved[key];
     return out;
   } catch {
     return {};
@@ -118,6 +119,9 @@ function nickname() {
 }
 
 const themeOption = () => (settings.theme === 'auto' ? undefined : settings.theme);
+const isCats = () => settings.kind === 'cats';
+const bestKey = () => `${settings.kind}:${settings.difficulty}`;
+const TARGET_WORD = { diff: '곳', cats: '마리' };
 
 /* ───────── 그림 짝 ─────────
  * 왼쪽·오른쪽 그림과 그 위의 표시(찾은 곳 동그라미, 오답 X)를 다룬다.
@@ -258,8 +262,17 @@ function soloElapsed() {
   return (endedAt ?? Date.now()) - startedAt + penaltyMs();
 }
 
+function applyKindUi() {
+  $('page-title').textContent = S.MODE_LABEL[settings.kind];
+  $('solo-pair').classList.toggle('single', isCats());
+  $('hint').textContent = isCats()
+    ? '그림 속에 숨은 고양이를 전부 찾아 클릭하세요. 창턱 · 상자 · 지붕 · 소파 · 나무 위를 잘 보세요.'
+    : '두 그림에서 다른 곳을 찾아 클릭하세요. 어느 쪽 그림을 눌러도 됩니다.';
+}
+
 function newGame(seed = null) {
-  puzzle = S.generatePuzzle({ seed: seed ?? S.randomSeed(), difficulty: settings.difficulty, theme: themeOption() });
+  applyKindUi();
+  puzzle = S.generatePuzzle({ seed: seed ?? S.randomSeed(), mode: settings.kind, difficulty: settings.difficulty, theme: themeOption() });
   found = new Map();
   misses = 0;
   startedAt = Date.now();
@@ -272,6 +285,7 @@ function newGame(seed = null) {
   const url = new URL(location.href);
   url.searchParams.set('seed', puzzle.seed);
   url.searchParams.set('d', settings.difficulty);
+  url.searchParams.set('k', settings.kind);
   history.replaceState(null, '', url);
   clearInterval(clockTimer);
   clockTimer = setInterval(renderSoloClock, 250);
@@ -288,7 +302,7 @@ function soloMarks() {
 }
 
 function renderSolo() {
-  $('found').textContent = `${found.size}/${puzzle.diffs.length}`;
+  $('found').textContent = `${isCats() ? '🐱 ' : ''}${found.size}/${puzzle.diffs.length}`;
   $('misses').textContent = `✗ ${misses}`;
   soloPair.setMarks(soloMarks());
   renderSoloClock();
@@ -300,7 +314,7 @@ function renderSoloClock() {
 }
 
 function bestMs() {
-  return best[settings.difficulty] ?? null;
+  return best[bestKey()] ?? null;
 }
 
 function renderBest() {
@@ -332,7 +346,7 @@ function soloHint() {
   if (!left.length) return;
   const i = left[Math.floor(Math.random() * left.length)];
   found.set(i, 'hint');
-  toast(`힌트 — 표시된 곳이 달라요 (+${HINT_PENALTY}초)`);
+  toast(isCats() ? `힌트 — 표시된 곳에 고양이가 있어요 (+${HINT_PENALTY}초)` : `힌트 — 표시된 곳이 달라요 (+${HINT_PENALTY}초)`);
   renderSolo();
   if (found.size === puzzle.diffs.length) finishSolo();
 }
@@ -343,14 +357,14 @@ function finishSolo() {
   const ms = soloElapsed();
   let hints = 0;
   for (const v of found.values()) if (v === 'hint') hints++;
-  $('result-badge').textContent = '다 찾았어요!';
+  $('result-badge').textContent = isCats() ? '고양이를 다 찾았어요! 🐱' : '다 찾았어요!';
   $('result-badge').className = 'result win';
   $('result-detail').textContent = `${formatTime(ms)} · ${S.THEME_LABEL[puzzle.theme]} #${puzzle.seed}`;
   const parts = [];
   if (misses) parts.push(`오답 ${misses}번 (+${misses * MISS_PENALTY}초)`);
   if (hints) parts.push(`힌트 ${hints}번 (+${hints * HINT_PENALTY}초)`);
   let sub = parts.length ? parts.join(' · ') : '오답도 힌트도 없이!';
-  const key = settings.difficulty;
+  const key = bestKey();
   if (hints === 0) {
     if (!best[key] || ms < best[key]) {
       sub += best[key] ? ` · 🏆 새 기록! (이전 ${formatTime(best[key])})` : ' · 🏆 첫 기록이에요.';
@@ -445,6 +459,7 @@ function stopVersus({ keepUrl = false } = {}) {
 
 function syncFromView(view) {
   if (view.puzzle) {
+    $('vs-pair').classList.toggle('single', view.puzzle.mode === 'cats');
     if (view.puzzle.seed !== lastSeed) {
       vsPair.show(view.puzzle);
       lastSeed = view.puzzle.seed;
@@ -520,7 +535,7 @@ function vsResultTexts(view) {
   const R = seatR(view);
   const l = leftIndex();
   const me = isPlayer();
-  const counts = `${L.found} : ${R.found} (${view.puzzle?.diffCount ?? view.diffs}곳 중)`;
+  const counts = `${L.found} : ${R.found} (${view.puzzle?.diffCount ?? view.diffs}${TARGET_WORD[view.mode] ?? '곳'} 중)`;
   if (view.winner === 'draw') return ['무승부', 'draw', `똑같이 찾았어요 — ${counts}`];
   const winnerName = view.seats[view.winner]?.name;
   const iWon = view.winner === l;
@@ -590,13 +605,17 @@ function renderVersus() {
     sub.textContent = me ? '코드나 초대 링크를 보내면 바로 시작돼요.' : (vs.freeSeat !== null ? '빈 자리가 있어요 — 앉으면 바로 시작!' : '');
     $('vs-note').textContent = '';
   } else if (view.phase === 'countdown') {
+    const cats = view.mode === 'cats';
     title.textContent = `${view.gameNo}번째 그림 — 준비!`;
-    sub.textContent = `${S.THEME_LABEL[view.puzzle.theme]} · 다른 곳 ${view.puzzle.diffCount}곳 · 먼저 찍는 사람이 가져가요 · 제한 ${Math.round(view.timeLimitSeconds / 60)}분`;
+    sub.textContent = `${S.MODE_LABEL[view.mode]} · ${S.THEME_LABEL[view.puzzle.theme]} · ${cats ? '고양이' : '다른 곳'} ${view.puzzle.diffCount}${cats ? '마리' : '곳'} · 먼저 찍는 사람이 가져가요 · 제한 ${Math.round(view.timeLimitSeconds / 60)}분`;
     $('vs-note').textContent = '';
   } else if (view.phase === 'playing') {
-    title.textContent = '찾는 중!';
+    const cats = view.mode === 'cats';
+    title.textContent = cats ? '고양이 찾는 중! 🐱' : '찾는 중!';
     sub.textContent = `${view.found.length}/${view.puzzle.diffCount} 찾음 · 틀리면 1.5초 잠김`;
-    $('vs-note').textContent = me ? (coarse ? '다른 곳을 탭하세요' : '다른 곳을 클릭하세요 — 어느 쪽 그림이든 괜찮아요') : '👀 관전 중 — 초록은 왼쪽 사람, 노랑은 오른쪽 사람이 찾은 곳';
+    $('vs-note').textContent = me
+      ? (cats ? '숨은 고양이를 클릭하세요' : (coarse ? '다른 곳을 탭하세요' : '다른 곳을 클릭하세요 — 어느 쪽 그림이든 괜찮아요'))
+      : '👀 관전 중 — 초록은 왼쪽 사람, 노랑은 오른쪽 사람이 찾은 곳';
   } else {
     const [badge, cls, detail] = vsResultTexts(view);
     title.textContent = view.winner === 'draw' ? '무승부' : me ? (view.winner === leftIndex() ? '승리!' : '패배') : `${view.seats[view.winner]?.name} 승리`;
@@ -605,7 +624,7 @@ function renderVersus() {
     $('vs-result-badge').className = `result ${cls}`;
     $('vs-result-detail').textContent = detail;
     $('vs-result-sub').textContent = `오답 — ${L.name} ${L.misses}번 · ${R.name} ${R.misses}번`;
-    $('vs-note').textContent = view.found.length < (view.puzzle?.diffCount ?? 0) ? '못 찾은 곳은 표시하지 않아요 — 다음 그림에서 다시!' : '';
+    $('vs-note').textContent = view.found.length < (view.puzzle?.diffCount ?? 0) ? (view.mode === 'cats' ? '못 찾은 고양이는 표시하지 않아요 — 다음 그림에서 다시!' : '못 찾은 곳은 표시하지 않아요 — 다음 그림에서 다시!') : '';
     $('btn-rematch').disabled = !me || L.rematch || !bothSeated;
     $('rematch-state').textContent = !me ? ''
       : L.rematch ? '상대의 재대결 수락을 기다리는 중…'
@@ -620,10 +639,19 @@ function renderVersus() {
 /* ───────── 입력 묶기 ───────── */
 
 function bindControls() {
+  const kind = $('kind');
   const difficulty = $('difficulty');
   const theme = $('theme');
+  kind.value = settings.kind;
   difficulty.value = settings.difficulty;
   theme.value = settings.theme;
+  kind.addEventListener('change', () => {
+    settings.kind = kind.value;
+    saveSettings();
+    if (settings.mode === 'solo') newGame();
+    else applyKindUi();
+    renderBest();
+  });
   difficulty.addEventListener('change', () => {
     settings.difficulty = difficulty.value;
     saveSettings();
@@ -645,7 +673,7 @@ function bindControls() {
   $('btn-hint').addEventListener('click', soloHint);
   $('seed-chip').addEventListener('click', () => {
     if (!puzzle) return;
-    copy(`${location.origin}${location.pathname}?seed=${puzzle.seed}&d=${settings.difficulty}`, '그림 링크');
+    copy(`${location.origin}${location.pathname}?seed=${puzzle.seed}&d=${settings.difficulty}&k=${settings.kind}`, '그림 링크');
   });
 
   document.addEventListener('keydown', (ev) => {
@@ -664,7 +692,7 @@ function bindVersus() {
   } catch { /* 무시 */ }
 
   $('btn-create').addEventListener('click', () => {
-    startVersus({ type: 'create', name: nickname(), options: { difficulty: settings.difficulty, theme: themeOption() } });
+    startVersus({ type: 'create', name: nickname(), options: { mode: settings.kind, difficulty: settings.difficulty, theme: themeOption() } });
   });
   const codeFromInput = () => {
     const code = $('join-code').value.trim().toUpperCase();
@@ -721,9 +749,13 @@ if (roomParam) {
   }
   newGame();
 } else {
-  if (S.PRESETS[params.get('d')]) {
+  if (S.PRESETS.diff[params.get('d')]) {
     settings.difficulty = params.get('d');
     $('difficulty').value = settings.difficulty;
+  }
+  if (S.MODES.includes(params.get('k'))) {
+    settings.kind = params.get('k');
+    $('kind').value = settings.kind;
   }
   newGame(seedParam > 0 ? Math.trunc(seedParam) : null);
   setMode(settings.mode, { save: false });

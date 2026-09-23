@@ -64,7 +64,7 @@ function beginRound(match, now) {
   match.gameNo = match.history.length + 1;
   match.startAt = now + match.countdownSeconds * 1000;
   match.endsAt = match.startAt + match.timeLimitSeconds * 1000;
-  match.puzzle = S.generatePuzzle({ seed: S.randomSeed(match.rand), diffs: match.diffs, theme: match.theme, difficulty: match.difficulty === 'custom' ? undefined : match.difficulty });
+  match.puzzle = S.generatePuzzle({ seed: S.randomSeed(match.rand), mode: match.mode, targets: match.targets, theme: match.theme, difficulty: match.difficulty === 'custom' ? undefined : match.difficulty });
   match.claims = new Array(match.puzzle.diffs.length).fill(null);
   match.winner = null;
   match.overReason = null;
@@ -214,6 +214,7 @@ function foundList(match) {
 function baseView(match, now) {
   return {
     phase: match.phase,
+    mode: match.mode,
     difficulty: match.difficulty,
     diffs: match.diffs,
     countdownSeconds: match.countdownSeconds,

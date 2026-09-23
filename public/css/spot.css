@@ -14,10 +14,12 @@
 .tag b { font-size: 1.15rem; margin-left: 6px; }
 
 .pair { display: grid; gap: 12px; }
-@media (min-width: 720px) { .pair { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 720px) { .pair { grid-template-columns: 1fr 1fr; } .pair.single { grid-template-columns: 1fr; } }
+.pair.single .pic[data-side="right"] { display: none; }
+.pair.single .pic { max-width: 960px; margin: 0 auto; width: 100%; }
 .pic {
   position: relative; aspect-ratio: 4 / 3; border-radius: 12px; overflow: hidden;
-  background: #0b1220; border: 1px solid var(--line); cursor: crosshair;
+  background: #f6efe3; border: 2px solid #2a2118; cursor: crosshair;
   user-select: none; -webkit-user-select: none; touch-action: manipulation;
 }
 .pic .scene, .pic .scene svg { display: block; width: 100%; height: 100%; }
@@ -30,7 +32,7 @@
 .pic.readonly { cursor: default; }
 .pic.waiting { opacity: .45; }
 
-.marks .mark { fill: none; stroke-width: 5; }
+.marks .mark { fill: none; stroke-width: 6; }
 .marks .mark.me { stroke: var(--mark-me); }
 .marks .mark.opp { stroke: var(--mark-opp); }
 .marks .mark.hint { stroke: var(--mark-hint); stroke-dasharray: 8 6; }
