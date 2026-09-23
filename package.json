@@ -1,14 +1,15 @@
 {
-  "name": "number-baseball",
+  "name": "game-arcade",
   "version": "1.0.0",
   "private": true,
-  "description": "숫자야구 온라인 대전 — 방 코드로 친구와 1:1, 혼자일 땐 AI와 연습",
+  "description": "종합게임 — 숫자야구, 지뢰찾기 (혼자 · 1:1 대전 · 관전), 숨은그림찾기. 브라우저만 있으면 됨",
   "type": "module",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "thumbs": "node scripts/thumbs.mjs"
   },
   "engines": {
     "node": ">=18"

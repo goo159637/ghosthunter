@@ -1,0 +1,283 @@
+/* 지뢰찾기 — style.css 의 변수와 기본 컴포넌트를 그대로 쓴다 */
+.ms {
+  --cell: 32px;
+  --gap: 2px;
+  --closed: #2b3852;
+  --closed-hi: #3a4a6a;
+  --opened: #111a2c;
+  --n1: #5b9dff; --n2: #3ddc84; --n3: #ff6b6b; --n4: #b48cff;
+  --n5: #ffb340; --n6: #34d3c6; --n7: #ff7ac8; --n8: #a3b1cc;
+}
+/* 판이 크면 페이지가 판 폭만큼 넓어진다 (최소 880px, 최대 화면 폭).
+   style.css 의 #app { max-width: 880px } 보다 우선해야 하므로 id 까지 붙인다. */
+#app.ms {
+  max-width: 100%;
+  width: fit-content;
+  min-width: min(880px, 100%);
+}
+@media (prefers-color-scheme: light) {
+  .ms {
+    --closed: #c9d3e6;
+    --closed-hi: #b7c3da;
+    --opened: #f7f9fd;
+    --n1: #1d4ed8; --n2: #15803d; --n3: #dc2626; --n4: #6d28d9;
+    --n5: #b45309; --n6: #0f766e; --n7: #be185d; --n8: #4b5563;
+  }
+}
+
+.ms .topbar { margin-bottom: 14px; }
+.ms .topbar.sub { margin-bottom: 12px; }
+.ms .back { text-decoration: none; font-weight: 600; }
+.ms-title { font-size: 1.3rem; margin: 0; flex: 1; text-align: center; }
+.ms .topbar .chip { margin-left: 0; }
+.ms .topbar.sub .chip { margin-left: auto; }
+.ms .topbar.sub .chip + .chip { margin-left: 0; }
+
+/* ── 머리 부분: 넓은 화면에선 제목 · 모드 · 난이도를 한 줄에 (큰 판을 위해 세로 공간을 아낀다) ── */
+.ms-head { display: flex; flex-direction: column; }
+@media (min-width: 900px) {
+  .ms-head { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 12px 16px; margin-bottom: 14px; }
+  .ms-head > .topbar { margin: 0; flex: 0 0 auto; gap: 12px; }
+  .ms-head > .seg { margin: 0; }
+  .ms-head > #controls {
+    flex: 1 1 320px; margin: 0; padding: 0;
+    background: none; border: 0; box-shadow: none;
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
+  }
+  .ms-head > #controls > .row { flex: 1 1 300px; }
+  .ms-head > #controls > .custom { margin-top: 0; flex: 0 1 280px; }
+  .ms-head > #controls .field > span { font-size: .72rem; margin-bottom: 2px; }
+  .ms-head > #controls input, .ms-head > #controls select, .ms-head > #controls button { padding: 8px 10px; }
+}
+
+/* ── 모드 전환 ── */
+.seg {
+  display: flex; gap: 4px; padding: 4px; margin: 0 auto 14px;
+  width: fit-content; background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+}
+.seg button {
+  width: auto; padding: 7px 18px; border-radius: 999px; background: none; color: var(--muted);
+}
+.seg button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+
+.ms-controls .row { margin-bottom: 0; align-items: flex-end; }
+.ms-controls .row > .field { flex: 3 1 200px; margin-bottom: 0; }
+.ms-controls .row > button { flex: 1 1 110px; max-width: 160px; }
+.ms-controls .custom { margin-top: 10px; }
+.ms-controls .custom .field { flex: 1 1 80px; }
+
+.cards.two { margin: 0 0 14px; }
+@media (min-width: 720px) { .cards.two { grid-template-columns: 1fr 1fr; } }
+
+/* ── 상태줄 ── */
+.ms-status {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 12px;
+}
+.ms-status-mid { display: flex; gap: 6px; align-items: center; }
+.counter {
+  min-width: 4.2em; text-align: center;
+  background: var(--opened); color: var(--danger);
+  border: 1px solid var(--line); border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 1.35rem; font-weight: 800; font-variant-numeric: tabular-nums;
+  letter-spacing: .08em;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+.face {
+  width: auto; font-size: 1.7rem; line-height: 1;
+  padding: 6px 12px; background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.face.small { font-size: 1.1rem; padding: 10px 10px; color: var(--muted); }
+.face:active { transform: translateY(1px); }
+
+/* ── 판 ── */
+.board-wrap {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 2px;
+  margin: 0 -2px;
+}
+.ms-board {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 9), var(--cell));
+  grid-auto-rows: var(--cell);
+  gap: var(--gap);
+  width: max-content;
+  margin: 0 auto;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+.cell {
+  width: var(--cell); height: var(--cell);
+  padding: 0; margin: 0;
+  border-radius: max(2px, calc(var(--cell) * .18));
+  border: 1px solid transparent;
+  background: var(--closed);
+  color: var(--text);
+  font-size: calc(var(--cell) * .58);
+  font-weight: 800; line-height: 1;
+  font-variant-numeric: tabular-nums;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .08s;
+  cursor: pointer;
+  overflow: hidden;
+}
+.cell:hover { background: var(--closed-hi); }
+.cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; z-index: 1; }
+.cell.open {
+  background: var(--opened);
+  border-color: var(--line);
+  cursor: default;
+}
+.cell.open:hover { background: var(--opened); }
+.cell.open.n:hover { background: var(--surface-2); cursor: pointer; }
+.cell.flag, .cell.q, .cell.mine { font-size: calc(var(--cell) * .55); }
+.cell.q { color: var(--muted); }
+.cell.mine { background: var(--surface-2); border-color: var(--line); }
+.cell.mine.boom { background: var(--danger); }
+.cell.wrong { background: var(--surface-2); border-color: var(--danger); position: relative; }
+.cell.wrong::after {
+  content: ''; position: absolute; inset: 15%;
+  background: linear-gradient(45deg, transparent 44%, var(--danger) 44%, var(--danger) 56%, transparent 56%),
+              linear-gradient(-45deg, transparent 44%, var(--danger) 44%, var(--danger) 56%, transparent 56%);
+}
+.cell.n1 { color: var(--n1); } .cell.n2 { color: var(--n2); } .cell.n3 { color: var(--n3); }
+.cell.n4 { color: var(--n4); } .cell.n5 { color: var(--n5); } .cell.n6 { color: var(--n6); }
+.cell.n7 { color: var(--n7); } .cell.n8 { color: var(--n8); }
+
+.ms-board.over .cell { cursor: default; }
+.ms-board.over .cell:not(.open):hover { background: var(--closed); }
+.ms-board.readonly .cell { cursor: default; pointer-events: none; }
+.ms-board.readonly .cell:hover { background: var(--closed); }
+.ms-board.readonly .cell.open:hover { background: var(--opened); }
+
+/* ── 도구 ── */
+.ms-tools { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+.ms-tools .toggle { width: auto; flex: 0 0 auto; }
+.ms-tools .toggle[aria-pressed="true"] {
+  background: var(--warn); color: #2a1a00; border-color: var(--warn);
+}
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: .9rem; color: var(--muted); cursor: pointer; }
+.check input { width: auto; padding: 0; margin: 0; accent-color: var(--accent); }
+.ms-game #hint { margin: 10px 0 0; }
+
+/* ── 결과 ── */
+.ms-result { text-align: center; }
+.ms-result .result { font-size: 1.8rem; }
+.ms-result .row > button { flex: 0 1 200px; }
+
+/* ── 큰 판: 화면에 맞추기 / 전체 화면 ── */
+.ms.compact { padding-top: 8px; padding-bottom: 12px; }
+.ms.compact .ms-head { margin-bottom: 8px; }
+.ms.compact .panel { margin-bottom: 8px; padding: 10px 12px; }
+.ms.compact .ms-status { margin-bottom: 8px; }
+.ms.compact .ms-tools { margin-top: 8px; }
+.ms.compact #hint, .ms.compact .rules { display: none; }
+.ms.compact .seg { margin-bottom: 8px; }
+.ms.compact .counter { font-size: 1.05rem; padding: 4px 8px; min-width: 3.6em; }
+.ms.compact .face { font-size: 1.3rem; padding: 4px 10px; }
+.ms.compact .face.small { font-size: .95rem; padding: 7px 8px; }
+
+#app.ms.fs { padding: 8px; min-width: 0; width: 100%; max-width: none; }
+.ms.fs > .ms-head, .ms.fs .ms-tools,
+.ms.fs #hint, .ms.fs > .rules { display: none !important; }
+.ms.fs #solo-game { margin: 0; padding: 10px; box-shadow: none; }
+.ms.fs .ms-status { margin-bottom: 8px; }
+.ms.fs #result {
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  z-index: 10; min-width: min(360px, 90vw);
+}
+
+/* ── 1:1 대전 ── */
+.scoreboard {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 14px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  white-space: nowrap;
+}
+.scoreboard b { font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+.scoreboard i { color: var(--muted); font-style: normal; font-weight: 700; }
+.scoreboard .name { font-size: .82rem; color: var(--muted); max-width: 7em; overflow: hidden; text-overflow: ellipsis; }
+.scoreboard .name.me { color: var(--accent); font-weight: 700; }
+.scoreboard.lead b:first-of-type { color: var(--accent); }
+.scoreboard.behind b:last-of-type { color: var(--warn); }
+.banner { flex-wrap: wrap; }
+@media (max-width: 480px) {
+  .scoreboard { padding: 4px 10px; gap: 6px; }
+  .scoreboard b { font-size: 1.2rem; }
+  .scoreboard .name { display: none; }   /* 좁으면 숫자만 */
+}
+.ms-result .history {
+  list-style: none; margin: 14px auto 0; padding: 0;
+  max-width: 420px; text-align: left; font-size: .88rem;
+}
+.ms-result .history li {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: 8px; background: var(--surface-2); margin-bottom: 4px;
+}
+.ms-result .history .no { color: var(--muted); min-width: 2.4em; font-variant-numeric: tabular-nums; }
+.ms-result .history .who { font-weight: 700; }
+.ms-result .history li.win .who { color: var(--accent); }
+.ms-result .history li.lose .who { color: var(--danger); }
+.ms-result .history .why { color: var(--muted); margin-left: auto; white-space: nowrap; }
+.banner .countdown {
+  font-size: 2.4rem; font-weight: 800; color: var(--accent);
+  font-variant-numeric: tabular-nums; min-width: 2.2em; text-align: center;
+}
+.vs-arena { display: grid; gap: 14px; margin-bottom: 14px; }
+@media (min-width: 720px) { .vs-arena { grid-template-columns: 1fr 1fr; align-items: start; } }
+.vs-side {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 12px; box-shadow: var(--shadow);
+  min-width: 0;
+}
+.vs-side.me { border-color: var(--accent); }
+.vs-side.opp { opacity: .92; }
+.vs-side.opp.away { opacity: .6; }
+.vs-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+.vs-head strong { font-size: 1rem; }
+.vs-head .pts { font-size: 1.05rem; font-variant-numeric: tabular-nums; color: var(--accent); }
+.vs-side.opp .pts { color: var(--warn); }
+.vs-head .vs-stats { margin-left: auto; }
+.side-note { margin: 8px 0 0; font-size: .85rem; }
+.side-note:empty { display: none; }
+.vs-stats { color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.progress { height: 6px; background: var(--surface-2); border-radius: 999px; overflow: hidden; margin-bottom: 10px; }
+.progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.vs-side.opp .progress i { background: var(--warn); }
+.vs-side .ms-tools { margin-top: 10px; gap: 10px; }
+.vs-side #vs-hint { font-size: .8rem; }
+#vs-opp-note { margin: 8px 0 0; font-size: .85rem; }
+.vs-side.finished .ms-board { opacity: .7; }
+#vs-play .ms-board.waiting { opacity: .45; pointer-events: none; }
+.people { margin: -4px 0 12px; font-size: .85rem; }
+
+.spec-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.spec-bar .lead { margin: 0; }
+.spec-bar .row { flex: 1 1 auto; margin: 0; }
+.spec-bar .row > button { flex: 0 1 auto; width: auto; }
+.spec-bar p { flex-basis: 100%; margin: 0; }
+
+.swap-box .req { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.swap-box .req + .req { margin-top: 8px; }
+.swap-box .req button { width: auto; flex: 0 0 auto; padding: 7px 14px; }
+.swap-box .req .muted { flex-basis: 100%; margin: 0; }
+
+.breakdown { margin: 4px auto 14px; border-collapse: collapse; font-size: .88rem; font-variant-numeric: tabular-nums; }
+.breakdown th, .breakdown td { padding: 3px 12px; text-align: right; }
+.breakdown th:first-child, .breakdown td:first-child { text-align: left; color: var(--muted); font-weight: 500; }
+.breakdown thead th { color: var(--text); font-weight: 700; border-bottom: 1px solid var(--line); }
+.breakdown tfoot td { font-weight: 800; border-top: 1px solid var(--line); font-size: 1rem; }
+.breakdown .minus { color: var(--danger); }
+.breakdown .plus { color: var(--accent); }
+.breakdown .win { color: var(--accent); }
+
+@media (max-width: 480px) {
+  .ms-title { font-size: 1.15rem; }
+  .counter { font-size: 1.15rem; min-width: 3.8em; }
+  .face { font-size: 1.5rem; }
+}
