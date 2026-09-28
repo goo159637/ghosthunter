@@ -6,6 +6,7 @@
 | --- | --- | --- |
 | ⚾ 숫자야구 | `/` | 방 코드로 친구와 온라인 1:1 · 혼자일 땐 AI 연습 |
 | 💣 지뢰찾기 | `/minesweeper` | 혼자 최고 기록 · 방 코드로 1:1 대전 (상대 판 실시간) |
+| 🔍 틀린그림찾기 | `/diff` | 두 그림에서 다른 곳 모두 찾기 · 쉬움/보통/어려움 · 그림 골라서 기록 도전 |
 
 ## ⚾ 숫자야구
 
@@ -62,6 +63,32 @@
 
 규칙은 `shared/minesweeper.js`(판 하나)와 `shared/msversus.js`(대전)에만 있고, 화면 코드(`public/js/minesweeper.js`)는 그 함수를 부르고 그리기만 합니다. `cellView()`/`encodeBoard()` 는 게임이 끝나기 전엔 지뢰 위치를 절대 내보내지 않습니다.
 
+## 🔍 틀린그림찾기
+
+`/diff`. 좌우가 나란히 붙은 그림 파일(`public/diff/<난이도>/NN.webp`)과 정답 위치(`public/diff/puzzles.json`)로 돌아갑니다. 난이도 탭 → 썸네일 갤러리에서 그림을 골라 시작합니다.
+
+- **규칙** — 두 그림에서 다른 곳을 찾아 아무 쪽이나 누르면 양쪽에 초록 원. 상단에 **찾은 개수 / 전체 개수**. 오답 +5초, 힌트(3초간 위치 표시) +20초. 그림 밖은 오답이 아닙니다.
+- **기록** — 그림마다 최고 기록을 `localStorage` 에 저장. 완료한 그림은 갤러리 카드에 ✓ 와 기록이 붙고, 상단 칩에 난이도별 완료 수. `/diff?p=easy-02` 처럼 링크로 바로 열 수 있습니다.
+- **화면** — 나란히/위아래 중 그림이 더 크게 보이는 배치를 고르고, 🔍 확대로 2배 + 스크롤(양쪽이 같이 움직임, 마우스로 끌어서 이동, 모바일은 핀치 줌).
+
+### 그림 추가하기
+
+1. 좌우가 붙은 그림을 `public/diff/<difficulty>/NN.webp` 에 넣습니다.
+2. `puzzles.json` 에 항목을 추가합니다. `half`(한쪽 크기)와 `right`(오른쪽 그림이 파일 안에서 시작하는 위치)가 핵심이고, `diffs` 는 비워 두어도 됩니다.
+3. `npm run thumbs` 로 썸네일(`public/diff/thumbs/<id>.jpg`)을 만듭니다. *(Playwright 필요)*
+4. `/diff?p=<id>&edit=1` 을 열면 **정답 편집기**가 켜집니다 — 그림(아무 쪽)을 누르면 정답 원이 생기고, 원을 다시 누르면 지워집니다. "JSON 복사"로 결과를 `puzzles.json` 에 붙여 넣으면 끝.
+
+```jsonc
+{ "id": "easy-01", "difficulty": "easy", "title": "꽃가게 광장",
+  "image": "/diff/easy/01.webp", "thumb": "/diff/thumbs/easy-01.jpg",
+  "width": 1536, "height": 1024,        // 파일 전체 크기
+  "half": { "w": 766, "h": 1024 },      // 한쪽 그림 크기
+  "right": { "x": 768, "y": 0 },        // 오른쪽 그림 시작 위치 (왼쪽과 맞춰 정렬한 값)
+  "diffs": [ { "x": 470, "y": 180, "r": 70 }, … ] }   // 왼쪽 그림 좌표
+```
+
+규칙(판정·벌점·힌트·검증)은 `shared/spotdiff.js`, 화면은 `public/js/diff.js`. `npm test` 가 `puzzles.json` 전체를 검사합니다(형식, 파일 존재, 차이가 그림 안에 서로 겹치지 않게 있는지).
+
 ## 실행하기
 
 Node.js 18 이상이 필요합니다.
@@ -111,6 +138,7 @@ shared/         서버와 브라우저가 함께 쓰는 순수 로직 (의존성
   baseball.js     숫자 검증, 스트라이크/볼 판정, 후보 생성
   engine.js       1:1 대전 상태머신 — 턴, 제한시간, 승패 판정
   minesweeper.js  지뢰찾기 규칙 — 지뢰 배치, 열기/깃발/주변 열기, 승패, 전송용 직렬화
+  spotdiff.js     틀린그림찾기 — 퍼즐 데이터 검증, 판정, 벌점, 힌트
   msversus.js     지뢰찾기 1:1 대전 상태머신 — 카운트다운, 판 두 개, 승패, 재대결
 server/
   index.js        HTTP(정적 파일) + WebSocket 서버
@@ -122,6 +150,9 @@ public/
   js/net.js       온라인 엔진 (WebSocket, 자동 재접속) — 숫자야구와 지뢰찾기가 같이 쓴다
   js/local.js     AI 연습 엔진 (같은 상태머신을 브라우저에서 구동)
   js/ai.js        AI 상대 — 난이도별 추론
+  diff.html / css/diff.css / js/diff.js
+                  틀린그림찾기 화면 (갤러리 · 판 · 정답 편집기)
+  diff/           그림(webp) · 썸네일(jpg) · puzzles.json(정답)
   minesweeper.html / css/minesweeper.css / js/minesweeper.js
                   지뢰찾기 화면 (혼자 + 1:1 대전)
   js/msboard.js   지뢰판 렌더러 + 입력 (내 판과 상대 판이 같이 쓴다)
@@ -187,6 +218,7 @@ npm test
 - `test/server.test.js` — 실제 서버를 띄워 소켓 두 개로 한 판을 끝까지 진행, 재접속과 에러 처리까지
 - `test/minesweeper.test.js` — 지뢰찾기 규칙 (첫 클릭 안전, 번짐, 깃발, 주변 열기, 승패, 정보 은닉, 직렬화 왕복)
 - `test/msversus.test.js` — 지뢰찾기 1:1 (점수 공식, 카운트다운, 서로 다른 판, 지뢰 뒤 라운드 지속, 다 열기, 무승부, 기권, 재대결, 자리 비우기/앉기와 승수 이전, 상대 판 은닉, 관전자 뷰)
+- `test/spotdiff.test.js` — 틀린그림찾기 (puzzles.json 검증 · 판정 · 오답/또 찍음/그림 밖 · 힌트 · 기록)
 
 ## 라이선스
 

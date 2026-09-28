@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>종합게임 · 숫자야구 · 지뢰찾기</title>
-<meta name="description" content="브라우저에서 바로 하는 미니게임 모음. 숫자야구 온라인 1:1 · AI 연습, 지뢰찾기 혼자 · 1:1 대전.">
+<title>종합게임 · 숫자야구 · 지뢰찾기 · 틀린그림찾기</title>
+<meta name="description" content="브라우저에서 바로 하는 미니게임 모음. 숫자야구 온라인 1:1 · AI 연습, 지뢰찾기 혼자 · 1:1 대전, 틀린그림찾기.">
 <meta name="color-scheme" content="dark light">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%AE%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/css/style.css">
@@ -22,6 +22,7 @@
     <nav class="game-nav" aria-label="게임 바로가기">
       <a href="#baseball">⚾ 숫자야구</a>
       <a href="/minesweeper">💣 지뢰찾기</a>
+      <a href="/diff">🔍 틀린그림찾기</a>
     </nav>
 
     <h2 id="baseball" class="game-head"><span aria-hidden="true">⚾</span> 숫자야구
@@ -115,6 +116,18 @@
       <span class="link-body">
         <strong>지뢰찾기 하러 가기</strong>
         <span class="muted">쉬움 · 보통 · 어려움 · 커스텀(최대 40×60) · 상대 판이 실시간으로 보이는 1:1 대전</span>
+      </span>
+      <span class="link-arrow" aria-hidden="true">→</span>
+    </a>
+
+    <h2 class="game-head"><span aria-hidden="true">🔍</span> 틀린그림찾기
+      <small class="muted">두 그림에서 다른 곳 모두 찾기 · 쉬움 · 보통 · 어려움 · 그림마다 기록 도전</small>
+    </h2>
+    <a class="card link" href="/diff">
+      <span class="link-icon" aria-hidden="true">🔍</span>
+      <span class="link-body">
+        <strong>틀린그림찾기 하러 가기</strong>
+        <span class="muted">그림을 골라 시작 · 찾은 개수 / 전체 개수 · 오답 +5초 · 힌트 +20초 · 완료한 그림 표시</span>
       </span>
       <span class="link-arrow" aria-hidden="true">→</span>
     </a>
