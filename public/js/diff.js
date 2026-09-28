@@ -18,7 +18,6 @@ let game = null;
 let ticker = null;
 let hintBusyUntil = 0;
 let zoomed = false;
-let big = false; // 크게 보기: 위아래로 화면 폭 가득 (세로는 스크롤)
 
 /* ───────── 저장 ───────── */
 
@@ -271,8 +270,8 @@ function fit() {
   const side = Math.min((availW - GAP) / 2 / w, availH / h);
   // 위아래 배치도 두 장이 한 화면에 같이 들어와야 비교할 수 있다
   const stackS = Math.min(availW / w, (availH - GAP) / 2 / h);
-  const stack = big || stackS > side * 1.08;
-  const s = Math.max(0.05, big ? availW / w : stack ? stackS : side);
+  const stack = stackS > side * 1.08;
+  const s = Math.max(0.05, stack ? stackS : side);
   pair.classList.toggle('stack', stack);
   pair.classList.toggle('zoomed', zoomed);
   const z = zoomed ? s * 2 : s;
@@ -432,14 +431,6 @@ async function main() {
   $('btn-next').addEventListener('click', () => start(nextPuzzle()));
   $('btn-zoom').addEventListener('click', toggleZoom);
   $('btn-full').addEventListener('click', toggleFull);
-  big = store.get('diff:big', false) === true;
-  $('btn-big').setAttribute('aria-pressed', String(big));
-  $('btn-big').addEventListener('click', () => {
-    big = !big;
-    store.set('diff:big', big);
-    $('btn-big').setAttribute('aria-pressed', String(big));
-    fit();
-  });
   document.addEventListener('fullscreenchange', () => {
     const on = Boolean(document.fullscreenElement);
     $('app').classList.toggle('full', on);

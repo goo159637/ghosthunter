@@ -44,7 +44,7 @@ button.small small { font-weight: 500; opacity: .75; }
 #app.sd.playing > .topbar { display: none; }
 #app.sd.playing .sd-bar { margin: 0 0 6px; }
 #app.sd.full { background: var(--bg); overflow: auto; }
-#btn-big[aria-pressed="true"], #btn-full[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+#btn-full[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 .sd-wrap {
   overflow: auto; border-radius: 8px; background: #000; box-shadow: var(--shadow);
   -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
