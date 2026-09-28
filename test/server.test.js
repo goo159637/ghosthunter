@@ -72,7 +72,7 @@ test('정적 파일을 제공하고, 경로 탈출은 막는다', async () => {
   assert.equal((await fetch(`${BASE}/diff`)).status, 200);
   assert.match(await (await fetch(`${BASE}/diff`)).text(), /틀린그림찾기/);
   assert.equal((await fetch(`${BASE}/diff/puzzles.json`)).headers.get('content-type'), 'application/json; charset=utf-8');
-  assert.equal((await fetch(`${BASE}/diff/easy/01.webp`)).headers.get('content-type'), 'image/webp');
+  assert.equal((await fetch(`${BASE}/diff/01/left.webp`)).headers.get('content-type'), 'image/webp');
   assert.equal((await fetch(`${BASE}/../package.json`)).status, 404);
   assert.equal((await fetch(`${BASE}/%2e%2e/package.json`)).status, 404);
   assert.equal((await fetch(`${BASE}/nope.html`)).status, 404);

@@ -3,16 +3,6 @@
 .sd-title { font-size: 1.4rem; margin: 0; }
 .sd-help { margin: 0 0 4px; text-align: center; }
 
-/* 난이도 탭 */
-.seg {
-  display: flex; gap: 4px; padding: 4px; margin: 0 auto 12px;
-  width: fit-content; max-width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
-  overflow-x: auto;
-}
-.seg button { width: auto; padding: 7px 14px; border-radius: 999px; background: none; color: var(--muted); white-space: nowrap; }
-.seg button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
-.seg button:disabled { opacity: .45; }
-
 /* 갤러리 */
 .sd-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-top: 12px; }
 .sd-card {

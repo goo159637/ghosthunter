@@ -2,8 +2,8 @@
  * 틀린그림찾기 화면. 규칙은 /shared/spotdiff.js, 정답 데이터는 /diff/puzzles.json.
  * `?p=<id>` 로 특정 그림을 바로 열고, `?edit=1` 이면 정답 편집기가 켜진다.
  *
- * 그림 파일 하나에 왼쪽·오른쪽이 나란히 들어 있다. 두 칸(pane)이 같은 파일을 서로 다른 위치로 잘라 보여 주고,
- * 어느 쪽을 눌러도 왼쪽 그림 좌표로 바꿔 판정한다. 찾은 곳은 양쪽에 같이 표시한다.
+ * 왼쪽·오른쪽 그림은 같은 크기의 파일 두 장이다. 어느 쪽을 눌러도 같은 좌표로 판정하고,
+ * 찾은 곳은 양쪽에 같이 표시한다.
  */
 import * as D from '/shared/spotdiff.js';
 
@@ -18,8 +18,6 @@ let game = null;
 let ticker = null;
 let hintBusyUntil = 0;
 let zoomed = false;
-let currentDifficulty = 'easy';
-let layout = { s: 1, stack: false };
 
 /* ───────── 저장 ───────── */
 
@@ -57,7 +55,6 @@ function el(name, attrs = {}, text) {
   return e;
 }
 
-const puzzlesOf = (difficulty) => pack.puzzles.filter((p) => p.difficulty === difficulty);
 const byId = (id) => pack.puzzles.find((p) => p.id === id) ?? null;
 
 /** 두 칸 */
@@ -70,50 +67,25 @@ const panes = [...document.querySelectorAll('.sd-pane')].map((pane) => ({
   svg: pane.querySelector('.marks'),
 }));
 
-/** 칸 안 화면 좌표 → 왼쪽 그림 좌표 */
+/** 칸 안 화면 좌표 → 그림 좌표 */
 function toImage(pane, e) {
   const rect = pane.pic.getBoundingClientRect();
   return {
-    x: ((e.clientX - rect.left) / rect.width) * puzzle.half.w,
-    y: ((e.clientY - rect.top) / rect.height) * puzzle.half.h,
+    x: ((e.clientX - rect.left) / rect.width) * puzzle.width,
+    y: ((e.clientY - rect.top) / rect.height) * puzzle.height,
   };
 }
 
 /* ───────── 고르기 ───────── */
 
-function renderDifficultyTabs() {
-  const box = $('difficulty');
-  box.innerHTML = '';
-  for (const d of D.DIFFICULTIES) {
-    const n = puzzlesOf(d.id).length;
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.setAttribute('role', 'tab');
-    b.dataset.d = d.id;
-    b.textContent = n ? `${d.label} ${n}` : d.label;
-    b.disabled = n === 0;
-    b.title = n ? `${d.label} ${n}장` : `${d.label} · 준비 중`;
-    b.setAttribute('aria-selected', String(d.id === currentDifficulty));
-    b.addEventListener('click', () => selectDifficulty(d.id));
-    box.appendChild(b);
-  }
-}
-
-function selectDifficulty(id) {
-  currentDifficulty = id;
-  store.set('diff:difficulty', id);
-  $('difficulty').querySelectorAll('button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.d === id)));
-  renderGallery();
-}
-
 function renderGallery() {
   const box = $('gallery');
   box.innerHTML = '';
-  const list = puzzlesOf(currentDifficulty);
+  const list = pack.puzzles;
   if (list.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'sd-empty';
-    empty.textContent = '이 난이도 그림은 준비 중이에요.';
+    empty.textContent = '그림이 아직 없어요.';
     box.appendChild(empty);
   }
   list.forEach((p, i) => {
@@ -123,7 +95,7 @@ function renderGallery() {
     card.className = `sd-card${best != null ? ' done' : ''}`;
     card.dataset.id = p.id;
     const img = document.createElement('img');
-    img.src = p.thumb ?? p.image;
+    img.src = p.thumb ?? p.left;
     img.alt = '';
     img.loading = 'lazy';
     img.decoding = 'async';
@@ -137,15 +109,15 @@ function renderGallery() {
     card.addEventListener('click', () => start(p));
     box.appendChild(card);
   });
-  renderProgressChip(currentDifficulty);
+  renderProgressChip();
 }
 
-function renderProgressChip(difficulty) {
-  const list = puzzlesOf(difficulty);
+function renderProgressChip() {
+  const list = pack.puzzles;
   const done = list.filter((p) => bestOf(p.id) != null).length;
   const chip = $('progress-chip');
   chip.hidden = list.length === 0;
-  chip.textContent = `${D.DIFF_LABEL[difficulty]} ${done}/${list.length} 완료`;
+  chip.textContent = `${done}/${list.length} 완료`;
 }
 
 /* ───────── 한 판 ───────── */
@@ -164,10 +136,11 @@ async function start(p) {
   $('timer').textContent = '0:00';
   $('miss-count').textContent = '오답 0';
   for (const pane of panes) {
+    const src = pane.side === 'left' ? p.left : p.right;
     pane.img.alt = `${p.title} — ${pane.side === 'left' ? '왼쪽' : '오른쪽'} 그림`;
-    pane.svg.setAttribute('viewBox', `0 0 ${p.half.w} ${p.half.h}`);
+    pane.svg.setAttribute('viewBox', `0 0 ${p.width} ${p.height}`);
     pane.svg.innerHTML = '';
-    if (pane.img.getAttribute('src') !== p.image) pane.img.src = p.image;
+    if (pane.img.getAttribute('src') !== src) pane.img.src = src;
   }
   try { await Promise.all(panes.map((pane) => pane.img.decode())); } catch { /* 표시만 늦어질 뿐 */ }
   if (puzzle !== p) return; // 그새 다른 그림으로 넘어감
@@ -217,7 +190,7 @@ function popFound(index) {
 }
 
 function flashMiss(pane, x, y) {
-  const s = Math.round(puzzle.half.w / 60);
+  const s = Math.round(puzzle.width / 60);
   const g = el('path', { class: 'miss', d: `M${x - s} ${y - s} L${x + s} ${y + s} M${x + s} ${y - s} L${x - s} ${y + s}` });
   pane.svg.appendChild(g);
   setTimeout(() => g.remove(), 700);
@@ -262,7 +235,7 @@ function finish() {
 }
 
 function nextPuzzle() {
-  const list = puzzlesOf(puzzle.difficulty);
+  const list = pack.puzzles;
   const i = list.findIndex((p) => p.id === puzzle.id);
   return list[(i + 1) % list.length];
 }
@@ -274,8 +247,6 @@ function backToPick() {
   $('stage').hidden = true;
   $('controls').hidden = false;
   history.replaceState(null, '', `/diff${EDIT ? '?edit=1' : ''}`);
-  if (puzzle) currentDifficulty = puzzle.difficulty;
-  renderDifficultyTabs();
   renderGallery();
 }
 
@@ -288,17 +259,16 @@ function backToPick() {
 function fit() {
   if (!puzzle) return;
   const pair = $('pair');
-  const { w, h } = puzzle.half;
+  const { width: w, height: h } = puzzle;
   const top = Math.max(0, pair.getBoundingClientRect().top);
   const availW = pair.clientWidth || pair.getBoundingClientRect().width;
   const availH = Math.max(260, window.innerHeight - top - 12);
   const GAP = 10, TAG = 22;
   const side = Math.min((availW - GAP) / 2 / w, (availH - TAG) / h);
-  // 위아래 배치는 페이지를 스크롤해서 보므로 폭에만 맞춘다(한 장이 화면 높이의 85% 는 넘지 않게)
-  const stackS = Math.min(availW / w, (window.innerHeight * 0.85) / h);
+  // 위아래 배치도 두 장이 한 화면에 같이 들어와야 비교할 수 있다
+  const stackS = Math.min(availW / w, (availH - GAP - TAG * 2) / 2 / h);
   const stack = stackS > side * 1.08;
   const s = Math.max(0.05, stack ? stackS : side);
-  layout = { s, stack };
   pair.classList.toggle('stack', stack);
   pair.classList.toggle('zoomed', zoomed);
   const z = zoomed ? s * 2 : s;
@@ -307,12 +277,8 @@ function fit() {
     pane.wrap.style.height = `${Math.floor(h * s)}px`;
     pane.pic.style.width = `${Math.floor(w * z)}px`;
     pane.pic.style.height = `${Math.floor(h * z)}px`;
-    pane.img.style.width = `${Math.round(puzzle.width * z)}px`;
-    pane.img.style.height = `${Math.round(puzzle.height * z)}px`;
-    const ox = pane.side === 'left' ? 0 : puzzle.right.x;
-    const oy = pane.side === 'left' ? 0 : puzzle.right.y;
-    pane.img.style.left = `${-Math.round(ox * z)}px`;
-    pane.img.style.top = `${-Math.round(oy * z)}px`;
+    pane.img.style.width = `${Math.floor(w * z)}px`;
+    pane.img.style.height = `${Math.floor(h * z)}px`;
   }
 }
 
@@ -409,7 +375,7 @@ const editor = {
   },
   json() {
     const p = this.p;
-    const head = ['id', 'difficulty', 'title', 'image', 'thumb', 'width', 'height', 'half', 'right', 'note']
+    const head = ['id', 'title', 'left', 'right', 'thumb', 'width', 'height', 'note']
       .filter((k) => p[k] !== undefined)
       .map((k) => `  "${k}": ${JSON.stringify(p[k])}`);
     const diffs = p.diffs.map((t) => `    ${JSON.stringify(t)}`).join(',\n');
@@ -449,11 +415,6 @@ async function main() {
   const problems = D.validatePack(pack);
   if (problems.length) console.warn('puzzles.json 문제:', problems);
 
-  const wanted = byId(params.get('p'));
-  const remembered = store.get('diff:difficulty', null);
-  const firstAvailable = D.DIFFICULTIES.find((d) => puzzlesOf(d.id).length > 0)?.id ?? 'easy';
-  currentDifficulty = wanted?.difficulty ?? (remembered && puzzlesOf(remembered).length ? remembered : firstAvailable);
-  renderDifficultyTabs();
   renderGallery();
 
   $('btn-pick').addEventListener('click', backToPick);
@@ -481,6 +442,7 @@ async function main() {
     $('btn-hint').hidden = true;
   }
 
+  const wanted = byId(params.get('p'));
   if (wanted) start(wanted);
 }
 

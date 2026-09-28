@@ -8,10 +8,9 @@ import * as D from '../shared/spotdiff.js';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pack = JSON.parse(fs.readFileSync(path.join(ROOT, 'public/diff/puzzles.json'), 'utf8'));
 
-/** 작은 시험용 퍼즐: 100×100 두 장이 나란히, 차이 두 곳 */
+/** 작은 시험용 퍼즐: 100×100 두 장, 차이 두 곳 */
 const sample = () => ({
-  id: 't', difficulty: 'easy', title: '시험', image: '/diff/easy/01.webp', width: 204, height: 100,
-  half: { w: 100, h: 100 }, right: { x: 104, y: 0 },
+  id: 't', title: '시험', left: '/diff/t/left.webp', right: '/diff/t/right.webp', width: 100, height: 100,
   diffs: [{ x: 30, y: 30, r: 15 }, { x: 70, y: 70, r: 15 }],
 });
 
@@ -19,32 +18,30 @@ const sample = () => ({
 
 test('puzzles.json 이 형식에 맞고, 그림·썸네일 파일이 있으며, 차이가 그림 안에 서로 겹치지 않게 있다', () => {
   assert.deepEqual(D.validatePack(pack), []);
-  assert.ok(pack.puzzles.length >= 3, '그림 수');
+  assert.ok(pack.puzzles.length >= 1, '그림 수');
   for (const p of pack.puzzles) {
-    assert.ok(fs.existsSync(path.join(ROOT, 'public', p.image)), `${p.id} 그림 파일`);
+    assert.ok(fs.existsSync(path.join(ROOT, 'public', p.left)), `${p.id} 왼쪽 그림 파일`);
+    assert.ok(fs.existsSync(path.join(ROOT, 'public', p.right)), `${p.id} 오른쪽 그림 파일`);
     assert.ok(fs.existsSync(path.join(ROOT, 'public', p.thumb)), `${p.id} 썸네일`);
     assert.ok(p.diffs.length >= 10, `${p.id} 차이 수 ${p.diffs.length}`);
     p.diffs.forEach((t, i) => {
       assert.equal(D.hitTest(p, t.x, t.y)?.index, i, `${p.id}: ${i + 1}번 중심을 찍으면 자기 자신`);
     });
   }
-  assert.deepEqual(pack.difficulties.map((d) => d.id), D.DIFFICULTIES.map((d) => d.id));
 });
 
 test('validatePuzzle 은 빠진 것과 이상한 값을 집어낸다', () => {
   assert.deepEqual(D.validatePuzzle(sample()), []);
   const bad = sample();
-  bad.difficulty = 'nope';
+  bad.right = 'right.webp'; // 절대 경로가 아님
   bad.diffs[0].x = 130; // 그림 밖
   bad.diffs.push({ x: 72, y: 72, r: 15 }); // 겹침
   bad.diffs.push({ x: 50, y: 50, r: 5 }); // 너무 작음
   const problems = D.validatePuzzle(bad);
-  assert.ok(problems.some((s) => s.includes('난이도')));
+  assert.ok(problems.some((s) => s.includes('right 경로')));
   assert.ok(problems.some((s) => s.includes('그림 밖')));
   assert.ok(problems.some((s) => s.includes('겹침')));
   assert.ok(problems.some((s) => s.includes('반지름')));
-  const wide = sample(); wide.right.x = 150;
-  assert.ok(D.validatePuzzle(wide).some((s) => s.includes('파일 밖')));
   assert.ok(D.validatePuzzle({ ...sample(), diffs: [] }).some((s) => s.includes('diffs')));
   assert.ok(D.validatePack({ puzzles: [sample(), sample()] }).some((s) => s.includes('id 중복')));
 });
