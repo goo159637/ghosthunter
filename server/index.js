@@ -1,5 +1,5 @@
 /**
- * 게임 서버 — 정적 파일(숫자야구 · 지뢰찾기 · 숨은그림찾기) + WebSocket 대전 (숫자야구, 지뢰찾기 1:1).
+ * 게임 서버 — 정적 파일 + WebSocket 대전 (숫자야구, 지뢰찾기 1:1).
  * 의존성은 ws 하나뿐이다.
  */
 import http from 'node:http';
@@ -22,16 +22,12 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.webp': 'image/webp',
   '.webmanifest': 'application/manifest+json',
 };
 
 // 확장자 없는 깔끔한 주소 → 실제 파일.
 const PAGES = {
   '/minesweeper': '/minesweeper.html',
-  '/hidden': '/hidden.html',
 };
 
 // URL 앞부분 → 실제 디렉터리. 이 두 곳 밖으로는 절대 나가지 않는다.
@@ -425,7 +421,7 @@ const heartbeat = setInterval(() => {
 const ticker = setInterval(() => store.tickAll(), 1000);
 
 server.listen(PORT, HOST, () => {
-  console.log(`게임 서버 실행 중 → http://localhost:${PORT} (숫자야구 / · 지뢰찾기 /minesweeper · 숨은그림찾기 /hidden)`);
+  console.log(`게임 서버 실행 중 → http://localhost:${PORT} (숫자야구 / · 지뢰찾기 /minesweeper)`);
 });
 
 function shutdown() {
