@@ -257,12 +257,15 @@ function backToPick() {
 
 /**
  * 두 그림이 한 화면에 들어오게. 나란히(가로) 와 위아래(세로) 중 그림이 더 크게 보이는 쪽을 고른다.
+ * 남는 세로 공간은 위아래로 나눠 판이 화면 가운데에 오게 한다.
  * 확대 모드면 각 칸의 창 크기는 그대로 두고 안쪽 그림만 2배 → 스크롤(양쪽이 같이 움직임).
  */
 function fit() {
   if (!puzzle) return;
   const pair = $('pair');
+  const stage = $('stage');
   const { width: w, height: h } = puzzle;
+  stage.style.marginTop = '0px';
   const top = Math.max(0, pair.getBoundingClientRect().top);
   const availW = pair.clientWidth || pair.getBoundingClientRect().width;
   const availH = Math.max(260, window.innerHeight - top - 8);
@@ -283,6 +286,9 @@ function fit() {
     pane.img.style.width = `${Math.floor(w * z)}px`;
     pane.img.style.height = `${Math.floor(h * z)}px`;
   }
+  // 남는 세로 공간이 있으면 막대+그림 묶음을 화면 가운데로 내린다
+  const pairH = stack ? Math.floor(h * s) * 2 + GAP : Math.floor(h * s);
+  stage.style.marginTop = `${Math.max(0, Math.floor((availH - pairH) / 2))}px`;
 }
 
 /** 전체화면: 브라우저 주소창·탭까지 치워 그림을 최대로 */
