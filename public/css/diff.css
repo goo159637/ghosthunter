@@ -29,12 +29,24 @@ button.small small { font-weight: 500; opacity: .75; }
 #btn-zoom[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 
 /* 두 그림 */
-.sd-pair { display: flex; gap: 10px; justify-content: center; align-items: flex-start; }
+.sd-pair { display: flex; gap: 6px; justify-content: center; align-items: flex-start; }
 .sd-pair.stack { flex-direction: column; align-items: center; }
-.sd-pane { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.sd-tag { font-size: .78rem; color: var(--muted); font-weight: 600; }
+.sd-pane { position: relative; }
+/* 왼쪽/오른쪽 표시는 그림 위 귀퉁이에 얹어 세로 공간을 먹지 않게 */
+.sd-tag {
+  position: absolute; left: 8px; top: 8px; z-index: 2; pointer-events: none;
+  font-size: .72rem; font-weight: 700; color: #fff; background: rgba(0, 0, 0, .45);
+  padding: 2px 8px; border-radius: 999px;
+}
+
+/* 게임 중에는 폭 제한을 풀고 제목줄을 숨겨 그림에 공간을 몰아준다 */
+#app.sd.playing { max-width: none; padding: 8px 8px calc(12px + env(safe-area-inset-bottom)); }
+#app.sd.playing > .topbar { display: none; }
+#app.sd.playing .sd-bar { margin: 0 0 6px; }
+#app.sd.full { background: var(--bg); overflow: auto; }
+#btn-big[aria-pressed="true"], #btn-full[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 .sd-wrap {
-  overflow: auto; border-radius: 12px; background: #000; box-shadow: var(--shadow);
+  overflow: auto; border-radius: 8px; background: #000; box-shadow: var(--shadow);
   -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
 }
 .sd-pic { position: relative; overflow: hidden; cursor: crosshair; user-select: none; -webkit-user-select: none; touch-action: pan-x pan-y pinch-zoom; }

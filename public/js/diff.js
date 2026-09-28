@@ -18,6 +18,7 @@ let game = null;
 let ticker = null;
 let hintBusyUntil = 0;
 let zoomed = false;
+let big = false; // 크게 보기: 위아래로 화면 폭 가득 (세로는 스크롤)
 
 /* ───────── 저장 ───────── */
 
@@ -130,6 +131,7 @@ async function start(p) {
 
   $('controls').hidden = true;
   $('stage').hidden = false;
+  $('app').classList.add('playing');
   $('result').hidden = true;
   $('found-count').textContent = '0';
   $('total-count').textContent = String(p.diffs.length);
@@ -246,6 +248,8 @@ function backToPick() {
   game = null;
   $('stage').hidden = true;
   $('controls').hidden = false;
+  $('app').classList.remove('playing');
+  if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
   history.replaceState(null, '', `/diff${EDIT ? '?edit=1' : ''}`);
   renderGallery();
 }
@@ -262,13 +266,13 @@ function fit() {
   const { width: w, height: h } = puzzle;
   const top = Math.max(0, pair.getBoundingClientRect().top);
   const availW = pair.clientWidth || pair.getBoundingClientRect().width;
-  const availH = Math.max(260, window.innerHeight - top - 12);
-  const GAP = 10, TAG = 22;
-  const side = Math.min((availW - GAP) / 2 / w, (availH - TAG) / h);
+  const availH = Math.max(260, window.innerHeight - top - 8);
+  const GAP = 6;
+  const side = Math.min((availW - GAP) / 2 / w, availH / h);
   // 위아래 배치도 두 장이 한 화면에 같이 들어와야 비교할 수 있다
-  const stackS = Math.min(availW / w, (availH - GAP - TAG * 2) / 2 / h);
-  const stack = stackS > side * 1.08;
-  const s = Math.max(0.05, stack ? stackS : side);
+  const stackS = Math.min(availW / w, (availH - GAP) / 2 / h);
+  const stack = big || stackS > side * 1.08;
+  const s = Math.max(0.05, big ? availW / w : stack ? stackS : side);
   pair.classList.toggle('stack', stack);
   pair.classList.toggle('zoomed', zoomed);
   const z = zoomed ? s * 2 : s;
@@ -280,6 +284,12 @@ function fit() {
     pane.img.style.width = `${Math.floor(w * z)}px`;
     pane.img.style.height = `${Math.floor(h * z)}px`;
   }
+}
+
+/** 전체화면: 브라우저 주소창·탭까지 치워 그림을 최대로 */
+function toggleFull() {
+  if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+  else $('app').requestFullscreen?.().catch(() => toast('전체화면을 쓸 수 없는 브라우저예요'));
 }
 
 function toggleZoom() {
@@ -421,6 +431,22 @@ async function main() {
   $('btn-again').addEventListener('click', () => start(puzzle));
   $('btn-next').addEventListener('click', () => start(nextPuzzle()));
   $('btn-zoom').addEventListener('click', toggleZoom);
+  $('btn-full').addEventListener('click', toggleFull);
+  big = store.get('diff:big', false) === true;
+  $('btn-big').setAttribute('aria-pressed', String(big));
+  $('btn-big').addEventListener('click', () => {
+    big = !big;
+    store.set('diff:big', big);
+    $('btn-big').setAttribute('aria-pressed', String(big));
+    fit();
+  });
+  document.addEventListener('fullscreenchange', () => {
+    const on = Boolean(document.fullscreenElement);
+    $('app').classList.toggle('full', on);
+    $('btn-full').setAttribute('aria-pressed', String(on));
+    requestAnimationFrame(fit);
+  });
+  if (!document.documentElement.requestFullscreen) $('btn-full').hidden = true; // 아이폰 사파리 등
   $('btn-hint').addEventListener('click', () => {
     if (!game || D.isOver(game) || Date.now() < hintBusyUntil) return;
     const h = D.hint(game);
