@@ -1,4 +1,4 @@
-/* 숫자야구 — 모바일 우선, 다크/라이트 모두 지원 */
+/* 종합게임 — 모바일 우선, 다크/라이트 모두 지원. 숫자야구 홈이 기본, 지뢰찾기는 minesweeper.css 가 덧붙인다 */
 :root {
   --bg: #0e1524;
   --surface: #172033;
@@ -62,6 +62,21 @@ p { margin: 0 0 12px; }
 .hero { text-align: center; padding: 18px 0 10px; }
 .hero p { color: var(--muted); }
 
+.game-nav { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 22px; }
+.game-nav a {
+  text-decoration: none; color: var(--text); font-weight: 600; font-size: .92rem;
+  padding: 8px 16px; border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--line);
+}
+.game-nav a:hover { border-color: var(--accent); }
+
+.game-head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  font-size: 1.25rem; margin: 26px 0 12px; padding-top: 18px; border-top: 1px solid var(--line);
+}
+.game-head small { font-weight: 500; font-size: .85rem; }
+.game-head:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
+
 .cards { display: grid; gap: 14px; margin: 18px 0; }
 @media (min-width: 720px) { .cards { grid-template-columns: repeat(3, 1fr); align-items: start; } }
 
@@ -124,6 +139,15 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .rules ul { margin: 10px 0 0; padding-left: 18px; color: var(--muted); font-size: .9rem; }
 .rules li { margin-bottom: 6px; }
 .rules code { background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+
+.card.link {
+  flex-direction: row; align-items: center; gap: 14px;
+  text-decoration: none; color: inherit;
+}
+.card.link:hover { border-color: var(--accent); }
+.card.link .link-icon { font-size: 1.6rem; }
+.card.link .link-body { flex: 1; display: flex; flex-direction: column; }
+.card.link .link-arrow { color: var(--muted); font-weight: 700; }
 
 /* ── 게임 화면 ── */
 .topbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }

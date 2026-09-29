@@ -235,6 +235,13 @@ export function resetForRematch(game, now = Date.now()) {
   beginSetup(game, now);
 }
 
+/** 방 관리가 보는 굵은 상태: 'lobby' | 'playing' | 'over'. 비밀번호 설정 중도 진행 중으로 친다. */
+export function status(game) {
+  if (game.phase === Phase.LOBBY) return 'lobby';
+  if (game.phase === Phase.OVER) return 'over';
+  return 'playing';
+}
+
 /** index 번 플레이어에게 보여줄 상태. 상대 비밀번호는 게임이 끝나기 전엔 절대 담지 않는다. */
 export function viewFor(game, index) {
   const me = game.players[index];
