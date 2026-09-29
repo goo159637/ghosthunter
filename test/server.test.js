@@ -69,6 +69,12 @@ test('정적 파일을 제공하고, 경로 탈출은 막는다', async () => {
   assert.equal((await fetch(`${BASE}/shared/baseball.js`)).status, 200);
   assert.equal((await fetch(`${BASE}/js/app.js`)).status, 200);
   assert.equal((await fetch(`${BASE}/minesweeper`)).status, 200);
+  assert.match(await (await fetch(`${BASE}/hidden`)).text(), /숨은그림찾기/);
+  const packRes = await fetch(`${BASE}/hidden/puzzles.json`);
+  assert.equal(packRes.headers.get('content-type'), 'application/json; charset=utf-8');
+  const { puzzles } = await packRes.json();
+  assert.equal((await fetch(`${BASE}${puzzles[0].image}`)).headers.get('content-type'), 'image/webp');
+  assert.equal((await fetch(`${BASE}${puzzles[0].thumb}`)).headers.get('content-type'), 'image/jpeg');
   assert.equal((await fetch(`${BASE}/../package.json`)).status, 404);
   assert.equal((await fetch(`${BASE}/%2e%2e/package.json`)).status, 404);
   assert.equal((await fetch(`${BASE}/nope.html`)).status, 404);

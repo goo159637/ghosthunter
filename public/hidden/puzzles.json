@@ -1,0 +1,29 @@
+{
+  "puzzles": [
+    {
+      "id": "antique-alley",
+      "title": "골동품 골목",
+      "image": "/hidden/antique-alley.webp",
+      "thumb": "/hidden/thumbs/antique-alley.jpg",
+      "width": 1536,
+      "height": 1024,
+      "items": [
+        {"name": "열쇠", "targets": [{"x": 147, "y": 139, "r": 26}, {"x": 147, "y": 190, "r": 20}]},
+        {"name": "안경", "targets": [{"x": 365, "y": 357, "r": 32}]},
+        {"name": "나비", "targets": [{"x": 607, "y": 47, "r": 24}]},
+        {"name": "우산", "targets": [{"x": 1273, "y": 258, "r": 34}]},
+        {"name": "반지", "targets": [{"x": 1194, "y": 536, "r": 22}]},
+        {"name": "주사위", "targets": [{"x": 619, "y": 859, "r": 20}]},
+        {"name": "가위", "targets": [{"x": 152, "y": 504, "r": 28}]},
+        {"name": "달팽이", "targets": [{"x": 1403, "y": 780, "r": 28}]},
+        {"name": "별 모양 장식", "targets": [{"x": 1174, "y": 103, "r": 26}]},
+        {"name": "작은 고양이", "targets": [{"x": 1270, "y": 856, "r": 40}]},
+        {"name": "깃털", "targets": [{"x": 871, "y": 784, "r": 30}]},
+        {"name": "버섯", "targets": [{"x": 94, "y": 827, "r": 24}]},
+        {"name": "숟가락", "targets": [{"x": 1283, "y": 634, "r": 24}]},
+        {"name": "장난감 공룡", "targets": [{"x": 454, "y": 706, "r": 36}, {"x": 562, "y": 739, "r": 20}]},
+        {"name": "조개껍데기", "targets": [{"x": 1458, "y": 331, "r": 22}]}
+      ]
+    }
+  ]
+}

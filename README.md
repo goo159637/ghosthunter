@@ -6,6 +6,7 @@
 | --- | --- | --- |
 | ⚾ 숫자야구 | `/` | 방 코드로 친구와 온라인 1:1 · 혼자일 땐 AI 연습 |
 | 💣 지뢰찾기 | `/minesweeper` | 혼자 최고 기록 · 방 코드로 1:1 대전 (상대 판 실시간) |
+| 🔎 숨은그림찾기 | `/hidden` | 그림 속 물건 모두 찾기 · 그림 골라서 기록 도전 |
 
 ## ⚾ 숫자야구
 
@@ -62,6 +63,31 @@
 
 규칙은 `shared/minesweeper.js`(판 하나)와 `shared/msversus.js`(대전)에만 있고, 화면 코드(`public/js/minesweeper.js`)는 그 함수를 부르고 그리기만 합니다. `cellView()`/`encodeBoard()` 는 게임이 끝나기 전엔 지뢰 위치를 절대 내보내지 않습니다.
 
+## 🔎 숨은그림찾기
+
+`/hidden`. 그림 파일 하나(`public/hidden/<id>.webp`)와 정답 위치(`public/hidden/puzzles.json`)로 돌아갑니다. 썸네일 갤러리에서 그림을 골라 시작합니다.
+
+- **규칙** — 목록의 물건을 그림에서 찾아 누르면 초록 원 + 목록에 ✓. 상단에 **찾은 개수 / 전체 개수**. 같은 물건이 여러 곳에 있으면 아무거나 하나. 오답 +5초, 힌트(3초간 위치 표시 + 목록에서 깜빡임) +20초.
+- **기록** — 그림마다 최고 기록을 `localStorage` 에 저장. 완료한 그림은 갤러리 카드에 ✓ 와 기록이 붙고, 상단 칩에 완료 수. `/hidden?p=antique-alley` 처럼 링크로 바로 열 수 있습니다.
+- **화면** — 게임 중에는 제목줄을 숨기고 그림을 한 화면에 최대한 크게. 넓은 화면은 목록을 그림 옆에, 좁은 화면은 그림 아래에 둡니다. ⛶ 전체화면, 🔍 확대(2배 + 스크롤, 마우스로 끌어서 이동, 모바일은 핀치 줌).
+
+### 그림 추가하기
+
+1. 그림을 `public/hidden/<id>.webp` 에 넣습니다.
+2. `puzzles.json` 에 항목을 추가합니다. `items` 의 `targets` 는 비워 두어도 됩니다.
+3. `npm run thumbs` 로 썸네일(`public/hidden/thumbs/<id>.jpg`)을 만듭니다. *(Playwright 필요)*
+4. `/hidden?p=<id>&edit=1` 을 열면 **정답 편집기**가 켜집니다 — 물건을 고르고 그림을 누르면 정답 원이 생기고, 원을 다시 누르면 지워집니다. "JSON 복사"로 결과를 `puzzles.json` 에 붙여 넣으면 끝.
+
+```jsonc
+{ "id": "antique-alley", "title": "골동품 골목",
+  "image": "/hidden/antique-alley.webp", "thumb": "/hidden/thumbs/antique-alley.jpg",
+  "width": 1536, "height": 1024,                   // 그림 크기
+  "scene": [0, 0, 1536, 1024],                     // (선택) 누를 수 있는 영역 — 바깥은 오답 아님
+  "items": [ { "name": "열쇠", "targets": [ { "x": 147, "y": 139, "r": 26 }, … ] }, … ] }
+```
+
+규칙(판정·벌점·힌트·검증)은 `shared/hidden.js`, 화면은 `public/js/hidden.js`. `npm test` 가 `puzzles.json` 전체를 검사합니다(형식, 파일 존재, 모든 정답이 자기 물건으로 판정되는지).
+
 ## 실행하기
 
 Node.js 18 이상이 필요합니다.
@@ -112,6 +138,7 @@ shared/         서버와 브라우저가 함께 쓰는 순수 로직 (의존성
   engine.js       1:1 대전 상태머신 — 턴, 제한시간, 승패 판정
   minesweeper.js  지뢰찾기 규칙 — 지뢰 배치, 열기/깃발/주변 열기, 승패, 전송용 직렬화
   msversus.js     지뢰찾기 1:1 대전 상태머신 — 카운트다운, 판 두 개, 승패, 재대결
+  hidden.js       숨은그림찾기 — 퍼즐 데이터 검증, 판정, 벌점, 힌트
 server/
   index.js        HTTP(정적 파일) + WebSocket 서버
   rooms.js        방 코드 발급, 자리 배정, 재접속 유예, 브로드캐스트 (게임 종류별 규칙 모듈을 꽂아 쓴다)
@@ -126,6 +153,11 @@ public/
                   지뢰찾기 화면 (혼자 + 1:1 대전)
   js/msboard.js   지뢰판 렌더러 + 입력 (내 판과 상대 판이 같이 쓴다)
   js/vsui.js      1:1 대전 공통 부품 — 연결 표시, 채팅, 승수, 관전자 패널, 교대 요청
+  hidden.html / css/hidden.css / js/hidden.js
+                  숨은그림찾기 화면 (갤러리 · 판 · 정답 편집기)
+  hidden/         그림(webp) · 썸네일(jpg) · puzzles.json(정답)
+scripts/
+  hidden-thumbs.mjs  숨은그림찾기 썸네일 만들기 (npm run thumbs)
 test/           node:test 기반 단위 + 통합 테스트
 ```
 
@@ -187,6 +219,7 @@ npm test
 - `test/server.test.js` — 실제 서버를 띄워 소켓 두 개로 한 판을 끝까지 진행, 재접속과 에러 처리까지
 - `test/minesweeper.test.js` — 지뢰찾기 규칙 (첫 클릭 안전, 번짐, 깃발, 주변 열기, 승패, 정보 은닉, 직렬화 왕복)
 - `test/msversus.test.js` — 지뢰찾기 1:1 (점수 공식, 카운트다운, 서로 다른 판, 지뢰 뒤 라운드 지속, 다 열기, 무승부, 기권, 재대결, 자리 비우기/앉기와 승수 이전, 상대 판 은닉, 관전자 뷰)
+- `test/hidden.test.js` — 숨은그림찾기 (puzzles.json 검증 · 판정 · 오답/또 찍음/장면 밖 · 여러 자리 물건 · 힌트 · 기록)
 
 ## 라이선스
 
